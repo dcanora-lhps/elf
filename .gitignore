@@ -39,3 +39,4 @@ staticfiles/
 Thumbs.db
 
 DEPLOY.md
+*.sqlite3

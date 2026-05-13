@@ -4,7 +4,8 @@ from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Q
+from django.core.paginator import Paginator
+from django.db.models import Count, Max, Min, Q
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
@@ -14,7 +15,16 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, U
 
 from .forms import SORT_KEYS, EventFilterForm, RuleFilterForm, RuleForm, ServerSettingsForm
 from .mobileconfig import AUDIENCE_LABELS, build_mobileconfig
-from .models import Audience, AuxiliaryEvent, Event, Rule, ServerSettings, SyncSession, UnknownMachine
+from .models import (
+    Audience,
+    AuxiliaryEvent,
+    Event,
+    Rule,
+    RuleType,
+    ServerSettings,
+    SyncSession,
+    UnknownMachine,
+)
 
 
 @login_required
@@ -120,6 +130,16 @@ class RuleCreateView(LoginRequiredMixin, CreateView):
     template_name = "rules/form.html"
     success_url = reverse_lazy("rule-list")
 
+    def get_initial(self):
+        initial = super().get_initial()
+        identifier = (self.request.GET.get("identifier") or "").strip()
+        rule_type = (self.request.GET.get("rule_type") or "").strip()
+        if identifier:
+            initial["identifier"] = identifier
+        if rule_type in {c.value for c in RuleType}:
+            initial["rule_type"] = rule_type
+        return initial
+
 
 class RuleUpdateView(LoginRequiredMixin, UpdateView):
     model = Rule
@@ -178,6 +198,90 @@ class EventListView(LoginRequiredMixin, ListView):
         ctx["filter_form"] = self.filter_form
         ctx["querystring"] = self.request.GET.urlencode()
         return ctx
+
+
+AGGREGATE_SORTS = {
+    "-count": ("-count", "-last_seen"),
+    "count": ("count", "-last_seen"),
+    "file_name": ("file_name", "team_id"),
+    "-file_name": ("-file_name", "team_id"),
+    "team_id": ("team_id", "file_name"),
+    "-team_id": ("-team_id", "file_name"),
+    "-last_seen": ("-last_seen",),
+    "last_seen": ("last_seen",),
+}
+
+
+@login_required
+def event_aggregate(request):
+    """Group events by app-identity and show counts."""
+    qs = Event.objects.all()
+    filter_form = EventFilterForm(request.GET or None)
+    if filter_form.is_valid():
+        d = filter_form.cleaned_data
+        if d.get("audience"):
+            qs = qs.filter(audience=d["audience"])
+        if d.get("decision"):
+            qs = qs.filter(decision=d["decision"])
+        if d.get("only_blocks"):
+            qs = qs.filter(decision__startswith="BLOCK_")
+        if d.get("machine_id"):
+            qs = qs.filter(machine_id__icontains=d["machine_id"])
+        if d.get("date_from"):
+            qs = qs.filter(received_at__date__gte=d["date_from"])
+        if d.get("date_to"):
+            qs = qs.filter(received_at__date__lte=d["date_to"])
+        if d.get("q"):
+            q = d["q"]
+            qs = qs.filter(
+                Q(file_name__icontains=q)
+                | Q(file_sha256__icontains=q)
+                | Q(signing_id__icontains=q)
+                | Q(team_id__icontains=q)
+                | Q(cdhash__icontains=q)
+                | Q(file_path__icontains=q)
+                | Q(file_bundle_id__icontains=q)
+            )
+
+    sort_param = request.GET.get("sort") or "-count"
+    if sort_param not in AGGREGATE_SORTS:
+        sort_param = "-count"
+    order_by = AGGREGATE_SORTS[sort_param]
+
+    aggregated = (
+        qs.values("team_id", "signing_id", "file_bundle_id", "file_name")
+        .annotate(
+            count=Count("id"),
+            blocks=Count("id", filter=Q(decision__startswith="BLOCK_")),
+            first_seen=Min("received_at"),
+            last_seen=Max("received_at"),
+        )
+        .order_by(*order_by)
+    )
+
+    paginator = Paginator(aggregated, 100)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    filters_only = request.GET.copy()
+    filters_only.pop("sort", None)
+    filters_only.pop("page", None)
+
+    return render(
+        request,
+        "events/aggregate.html",
+        {
+            "filter_form": filter_form,
+            "page_obj": page_obj,
+            "paginator": paginator,
+            "is_paginated": paginator.num_pages > 1,
+            "groups": page_obj.object_list,
+            "querystring": request.GET.urlencode(),
+            "filters_querystring": filters_only.urlencode(),
+            "current_sort": sort_param,
+            "total_events": qs.count(),
+            "total_groups": paginator.count,
+        },
+    )
 
 
 class EventDetailView(LoginRequiredMixin, DetailView):

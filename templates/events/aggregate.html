@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Events by app — elf{% endblock %}
+{% block content %}
+<h1>Events by app</h1>
+<p>
+  <a class="btn secondary" href="{% url 'event-list' %}{% if querystring %}?{{ querystring }}{% endif %}">← event list</a>
+  &nbsp;Grouped by <code>(team_id, signing_id, bundle_id, file_name)</code>.
+  Totals: {{ total_groups }} groups across {{ total_events }} events.
+</p>
+
+<div class="filters">
+  <form method="get">
+    <div><label>Search</label>{{ filter_form.q }}</div>
+    <div><label>Machine ID</label>{{ filter_form.machine_id }}</div>
+    <div><label>Audience</label>{{ filter_form.audience }}</div>
+    <div><label>Decision</label>{{ filter_form.decision }}</div>
+    <div><label style="display:inline-block">{{ filter_form.only_blocks }} only blocks</label></div>
+    <div><label>From</label>{{ filter_form.date_from }}</div>
+    <div><label>To</label>{{ filter_form.date_to }}</div>
+    <input type="hidden" name="sort" value="{{ current_sort }}">
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn secondary" href="{% url 'event-aggregate' %}">Reset</a>
+  </form>
+</div>
+
+{% with cs=current_sort %}
+{% spaceless %}
+{% url 'event-aggregate' as base_url %}
+<table>
+<thead>
+<tr>
+  <th><a href="?sort={% if cs == '-count' %}count{% else %}-count{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Count{% if cs == '-count' %} ▼{% elif cs == 'count' %} ▲{% endif %}</a></th>
+  <th>Blocks</th>
+  <th><a href="?sort={% if cs == '-file_name' %}file_name{% else %}-file_name{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">File name{% if cs == '-file_name' %} ▼{% elif cs == 'file_name' %} ▲{% endif %}</a></th>
+  <th><a href="?sort={% if cs == '-team_id' %}team_id{% else %}-team_id{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Team ID{% if cs == '-team_id' %} ▼{% elif cs == 'team_id' %} ▲{% endif %}</a></th>
+  <th>Signing ID</th>
+  <th>Bundle ID</th>
+  <th>First seen</th>
+  <th><a href="?sort={% if cs == '-last_seen' %}last_seen{% else %}-last_seen{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Last seen{% if cs == '-last_seen' %} ▼{% elif cs == 'last_seen' %} ▲{% endif %}</a></th>
+</tr>
+</thead>
+{% endspaceless %}
+{% endwith %}
+<tbody>
+{% for g in groups %}
+{% spaceless %}
+<tr>
+  <td><strong>{{ g.count }}</strong></td>
+  <td>{% if g.blocks %}<span class="pill block">{{ g.blocks }}</span>{% else %}—{% endif %}</td>
+  <td>
+    <a href="{% url 'event-list' %}?file_name={{ g.file_name|urlencode }}">{{ g.file_name|default:"(no name)" }}</a>
+  </td>
+  <td class="mono">{% if g.team_id %}{{ g.team_id }} <a href="{% url 'rule-create' %}?rule_type=TEAMID&amp;identifier={{ g.team_id|urlencode }}" title="Make a rule for this Team ID" style="font-size:11px">+ rule</a>{% else %}—{% endif %}</td>
+  <td class="mono" title="{{ g.signing_id }}">{% if g.signing_id %}{{ g.signing_id|truncatechars:40 }} <a href="{% url 'rule-create' %}?rule_type=SIGNINGID&amp;identifier={{ g.signing_id|urlencode }}" title="Make a rule for this Signing ID" style="font-size:11px">+ rule</a>{% else %}—{% endif %}</td>
+  <td class="mono">{{ g.file_bundle_id|default:"—"|truncatechars:32 }}</td>
+  <td>{{ g.first_seen|date:"Y-m-d H:i" }}</td>
+  <td>{{ g.last_seen|date:"Y-m-d H:i" }}</td>
+</tr>
+{% endspaceless %}
+{% empty %}
+<tr><td colspan="8"><em>No events match.</em></td></tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% if is_paginated %}
+<div class="pagination">
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&{{ querystring }}">previous</a>{% endif %}
+  <span>page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&{{ querystring }}">next</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

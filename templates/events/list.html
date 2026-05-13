@@ -2,6 +2,7 @@
 {% block title %}Events — elf{% endblock %}
 {% block content %}
 <h1>Events</h1>
+<p><a class="btn secondary" href="{% url 'event-aggregate' %}{% if querystring %}?{{ querystring }}{% endif %}">View by app →</a></p>
 
 <div class="filters">
   <form method="get">
@@ -21,7 +22,7 @@
 <table>
 <thead>
 <tr>
-  <th>Received</th><th>Audience</th><th>Machine</th><th>Decision</th><th>File</th><th>SHA-256</th><th>User</th>
+  <th>Received</th><th>Audience</th><th>Machine</th><th>Decision</th><th>File</th><th>Signing ID</th><th>Team ID</th><th>User</th>
 </tr>
 </thead>
 <tbody>
@@ -32,11 +33,12 @@
   <td class="mono">{{ e.machine_id|truncatechars:32 }}</td>
   <td>{% if e.decision|slice:":5" == "BLOCK" %}<span class="pill block">{{ e.decision }}</span>{% elif e.decision|slice:":5" == "ALLOW" %}<span class="pill allow">{{ e.decision }}</span>{% else %}<span class="pill">{{ e.decision }}</span>{% endif %}</td>
   <td>{{ e.file_name|default:"—" }}{% if e.file_bundle_name %}<br><small style="color:#666">{{ e.file_bundle_name }}</small>{% endif %}</td>
-  <td class="mono" title="{{ e.file_sha256 }}">{{ e.file_sha256|slice:":12" }}</td>
+  <td class="mono" title="{{ e.signing_id }}">{% if e.signing_id %}{{ e.signing_id|truncatechars:36 }} <a href="{% url 'rule-create' %}?rule_type=SIGNINGID&amp;identifier={{ e.signing_id|urlencode }}" title="Make a rule for this Signing ID" style="font-size:11px">+ rule</a>{% else %}—{% endif %}</td>
+  <td class="mono">{% if e.team_id %}{{ e.team_id }} <a href="{% url 'rule-create' %}?rule_type=TEAMID&amp;identifier={{ e.team_id|urlencode }}" title="Make a rule for this Team ID" style="font-size:11px">+ rule</a>{% else %}—{% endif %}</td>
   <td>{{ e.executing_user|default:"—" }}</td>
 </tr>
 {% empty %}
-<tr><td colspan="7"><em>No events match.</em></td></tr>
+<tr><td colspan="8"><em>No events match.</em></td></tr>
 {% endfor %}
 </tbody>
 </table>
