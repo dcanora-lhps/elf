@@ -3,6 +3,7 @@
 {% block content %}
 <h1>{% if object %}Edit rule{% else %}New rule{% endif %}</h1>
 <form method="post" style="max-width: 720px;">{% csrf_token %}
+{% if back_to %}<input type="hidden" name="_back_to" value="{{ back_to }}">{% endif %}
 {{ form.non_field_errors }}
 <table>
 {% for field in form %}
@@ -14,7 +15,7 @@
 </table>
 <p>
   <button class="btn" type="submit">Save</button>
-  <a class="btn secondary" href="{% url 'rule-list' %}">Cancel</a>
+  <a class="btn secondary" href="{% if back_to %}{{ back_to }}{% else %}{% url 'rule-list' %}{% endif %}">Cancel</a>
 </p>
 </form>
 {% endblock %}

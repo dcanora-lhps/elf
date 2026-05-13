@@ -6,7 +6,7 @@ from django.db.models import F, Q
 from django.http import JsonResponse
 from django.utils import timezone
 
-from .audience import audience_for, rules_queryset_for
+from .audience import audience_for, is_recognized_machine_id, rules_queryset_for
 from .auth import json_endpoint
 from .cursors import get_cursor, new_cursor
 from .models import (
@@ -52,7 +52,7 @@ def _current_session(machine_id):
 @json_endpoint
 def preflight(request, body, machine_id):
     audience = audience_for(machine_id)
-    if audience == Audience.UNKNOWN:
+    if not is_recognized_machine_id(machine_id):
         _track_unknown(machine_id)
 
     server_settings = ServerSettings.get()
@@ -142,7 +142,7 @@ def _build_event(machine_id, audience, raw):
 @json_endpoint
 def eventupload(request, body, machine_id):
     audience = audience_for(machine_id)
-    if audience == Audience.UNKNOWN:
+    if not is_recognized_machine_id(machine_id):
         _track_unknown(machine_id)
 
     events_in = body.get("events") or []
@@ -200,7 +200,7 @@ def _serialize_rule(rule):
 @json_endpoint
 def ruledownload(request, body, machine_id):
     audience = audience_for(machine_id)
-    if audience == Audience.UNKNOWN:
+    if not is_recognized_machine_id(machine_id):
         _track_unknown(machine_id)
 
     cursor_token = (body.get("cursor") or "").strip()
@@ -220,7 +220,7 @@ def ruledownload(request, body, machine_id):
                 batch_size=settings.SANTA_DEFAULT_BATCH_SIZE,
             )
 
-    if audience == Audience.UNKNOWN or ServerSettings.get().monitor_only:
+    if ServerSettings.get().monitor_only:
         return JsonResponse({"rules": [], "cursor": ""})
 
     qs = rules_queryset_for(audience)
@@ -250,7 +250,7 @@ def ruledownload(request, body, machine_id):
 @json_endpoint
 def postflight(request, body, machine_id):
     audience = audience_for(machine_id)
-    if audience == Audience.UNKNOWN:
+    if not is_recognized_machine_id(machine_id):
         _track_unknown(machine_id)
 
     session = _current_session(machine_id)

@@ -2,7 +2,7 @@
 {% block title %}Unknown machines — elf{% endblock %}
 {% block content %}
 <h1>Unknown machines</h1>
-<p>Machines that have synced but whose <code>machine_id</code> contains neither <code>EMP</code> nor <code>STU</code>. They receive an empty ruleset. Use the admin to add notes once identified.</p>
+<p>Machines that have synced but whose <code>machine_id</code> contains neither <code>EMP</code> nor <code>STU</code>. They are treated as <strong>students</strong> by default (and receive the student ruleset / mobileconfig). This list is purely for admin triage — add notes if you want to remember who they belong to.</p>
 
 <table>
 <thead><tr><th>Machine ID</th><th>Hits</th><th>First seen</th><th>Last seen</th><th>Notes</th><th></th></tr></thead>

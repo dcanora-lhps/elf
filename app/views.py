@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from urllib.parse import urlparse
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -10,6 +11,7 @@ from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
 
@@ -124,7 +126,51 @@ class RuleListView(LoginRequiredMixin, ListView):
         return ctx
 
 
-class RuleCreateView(LoginRequiredMixin, CreateView):
+_BACK_TO_ALLOWLIST = {"/events/", "/events/aggregate/", "/rules/"}
+
+
+def _safe_back_to(request, candidate):
+    """Validate a redirect target points back to a list page in this app.
+
+    Accepts only same-host URLs whose path is exactly /events/, /events/aggregate/,
+    or /rules/. The query string is preserved. Returns the candidate string when
+    safe, else None.
+    """
+    if not candidate:
+        return None
+    if not url_has_allowed_host_and_scheme(
+        candidate, allowed_hosts={request.get_host()}, require_https=False
+    ):
+        return None
+    path = urlparse(candidate).path or ""
+    if path not in _BACK_TO_ALLOWLIST:
+        return None
+    return candidate
+
+
+class _BackToMixin:
+    """Captures a return URL from the referrer (GET) or hidden field (POST) so
+    that saving a rule sends the user back to wherever they came from."""
+
+    def _back_to(self):
+        return _safe_back_to(
+            self.request,
+            self.request.POST.get("_back_to")
+            or self.request.GET.get("_back_to")
+            or self.request.META.get("HTTP_REFERER", ""),
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["back_to"] = self._back_to() or ""
+        return ctx
+
+    def get_success_url(self):
+        back = _safe_back_to(self.request, self.request.POST.get("_back_to", ""))
+        return back or str(self.success_url)
+
+
+class RuleCreateView(_BackToMixin, LoginRequiredMixin, CreateView):
     model = Rule
     form_class = RuleForm
     template_name = "rules/form.html"
@@ -141,7 +187,7 @@ class RuleCreateView(LoginRequiredMixin, CreateView):
         return initial
 
 
-class RuleUpdateView(LoginRequiredMixin, UpdateView):
+class RuleUpdateView(_BackToMixin, LoginRequiredMixin, UpdateView):
     model = Rule
     form_class = RuleForm
     template_name = "rules/form.html"
@@ -162,7 +208,7 @@ class EventListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         qs = Event.objects.all()
-        self.filter_form = EventFilterForm(self.request.GET or None)
+        self.filter_form = EventFilterForm(self.request.GET)
         sort = "-received_at"
         if self.filter_form.is_valid():
             d = self.filter_form.cleaned_data
@@ -188,7 +234,7 @@ class EventListView(LoginRequiredMixin, ListView):
                     | Q(cdhash__icontains=q)
                     | Q(file_path__icontains=q)
                 )
-            if d.get("hide_covered"):
+            if not d.get("show_covered"):
                 covered = _covered_by_rule_q()
                 if covered:
                     qs = qs.exclude(covered)
@@ -252,7 +298,7 @@ AGGREGATE_SORTS = {
 def event_aggregate(request):
     """Group events by app-identity and show counts."""
     qs = Event.objects.all()
-    filter_form = EventFilterForm(request.GET or None)
+    filter_form = EventFilterForm(request.GET)
     if filter_form.is_valid():
         d = filter_form.cleaned_data
         if d.get("audience"):
@@ -278,7 +324,7 @@ def event_aggregate(request):
                 | Q(file_path__icontains=q)
                 | Q(file_bundle_id__icontains=q)
             )
-        if d.get("hide_covered"):
+        if not d.get("show_covered"):
             covered = _covered_by_rule_q()
             if covered:
                 qs = qs.exclude(covered)

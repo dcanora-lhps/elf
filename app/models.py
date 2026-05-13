@@ -50,7 +50,6 @@ CLEAN_SYNC_TYPES = {
 class Audience(models.TextChoices):
     TEACHER = "teacher"
     STUDENT = "student"
-    UNKNOWN = "unknown"
 
 
 class Rule(models.Model):
