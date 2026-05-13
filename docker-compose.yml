@@ -6,9 +6,9 @@
 #   docker compose up -d
 #   docker compose exec web python manage.py createsuperuser
 #
-# TLS: this stack does NOT terminate TLS. Put a reverse proxy (Caddy, Traefik,
-# nginx, Cloudflare Tunnel, etc.) in front and forward to web:8000. Set
-# DJANGO_BEHIND_PROXY=1 so Django trusts X-Forwarded-Proto.
+# Caddy handles TLS automatically via Let's Encrypt (HTTP-01 challenge on port 80).
+# Make sure ports 80 and 443 are reachable from the public internet and that
+# $DOMAIN resolves to this host before first start.
 
 services:
   db:
@@ -36,17 +36,36 @@ services:
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
       DJANGO_DEBUG: "0"
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?DJANGO_ALLOWED_HOSTS must be set in .env}
-      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
-      DJANGO_BEHIND_PROXY: ${DJANGO_BEHIND_PROXY:-1}
+      DJANGO_ALLOWED_HOSTS: ${DOMAIN:?DOMAIN must be set in .env}
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://${DOMAIN}
+      DJANGO_BEHIND_PROXY: "1"
       DATABASE_URL: postgres://${POSTGRES_USER:-elf}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-elf}
       SANTA_SYNC_TOKEN: ${SANTA_SYNC_TOKEN:?SANTA_SYNC_TOKEN must be set in .env}
       SANTA_DEFAULT_CLIENT_MODE: ${SANTA_DEFAULT_CLIENT_MODE:-MONITOR}
       SANTA_DEFAULT_BATCH_SIZE: ${SANTA_DEFAULT_BATCH_SIZE:-50}
       SANTA_FULL_SYNC_INTERVAL_SECONDS: ${SANTA_FULL_SYNC_INTERVAL_SECONDS:-600}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN must be set in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set in .env (Let's Encrypt account)}
     ports:
-      - "${HOST_BIND:-127.0.0.1}:${HOST_PORT:-8000}:8000"
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - elf_caddy_data:/data
+      - elf_caddy_config:/config
 
 volumes:
   elf_pg_data:
+  elf_caddy_data:
+  elf_caddy_config:
