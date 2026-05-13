@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Events — elf{% endblock %}
+{% block content %}
+<h1>Events</h1>
+
+<div class="filters">
+  <form method="get">
+    <div><label>Search</label>{{ filter_form.q }}</div>
+    <div><label>Machine ID</label>{{ filter_form.machine_id }}</div>
+    <div><label>Audience</label>{{ filter_form.audience }}</div>
+    <div><label>Decision</label>{{ filter_form.decision }}</div>
+    <div><label style="display:inline-block">{{ filter_form.only_blocks }} only blocks</label></div>
+    <div><label>From</label>{{ filter_form.date_from }}</div>
+    <div><label>To</label>{{ filter_form.date_to }}</div>
+    <div><label>Sort</label>{{ filter_form.sort }}</div>
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn secondary" href="{% url 'event-list' %}">Reset</a>
+  </form>
+</div>
+
+<table>
+<thead>
+<tr>
+  <th>Received</th><th>Audience</th><th>Machine</th><th>Decision</th><th>File</th><th>SHA-256</th><th>User</th>
+</tr>
+</thead>
+<tbody>
+{% for e in events %}
+<tr>
+  <td><a href="{% url 'event-detail' e.pk %}">{{ e.received_at|date:"Y-m-d H:i:s" }}</a></td>
+  <td><span class="pill {{ e.audience }}">{{ e.audience }}</span></td>
+  <td class="mono">{{ e.machine_id|truncatechars:32 }}</td>
+  <td>{% if e.decision|slice:":5" == "BLOCK" %}<span class="pill block">{{ e.decision }}</span>{% elif e.decision|slice:":5" == "ALLOW" %}<span class="pill allow">{{ e.decision }}</span>{% else %}<span class="pill">{{ e.decision }}</span>{% endif %}</td>
+  <td>{{ e.file_name|default:"—" }}{% if e.file_bundle_name %}<br><small style="color:#666">{{ e.file_bundle_name }}</small>{% endif %}</td>
+  <td class="mono" title="{{ e.file_sha256 }}">{{ e.file_sha256|slice:":12" }}</td>
+  <td>{{ e.executing_user|default:"—" }}</td>
+</tr>
+{% empty %}
+<tr><td colspan="7"><em>No events match.</em></td></tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% if is_paginated %}
+<div class="pagination">
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&{{ querystring }}">previous</a>{% endif %}
+  <span>page {{ page_obj.number }} of {{ paginator.num_pages }} · {{ paginator.count }} events</span>
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&{{ querystring }}">next</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

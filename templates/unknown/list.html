@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Unknown machines — elf{% endblock %}
+{% block content %}
+<h1>Unknown machines</h1>
+<p>Machines that have synced but whose <code>machine_id</code> contains neither <code>EMP</code> nor <code>STU</code>. They receive an empty ruleset. Use the admin to add notes once identified.</p>
+
+<table>
+<thead><tr><th>Machine ID</th><th>Hits</th><th>First seen</th><th>Last seen</th><th>Notes</th><th></th></tr></thead>
+<tbody>
+{% for m in machines %}
+<tr>
+  <td class="mono">{{ m.machine_id }}</td>
+  <td>{{ m.hit_count }}</td>
+  <td>{{ m.first_seen|date:"Y-m-d H:i" }}</td>
+  <td>{{ m.last_seen|date:"Y-m-d H:i" }}</td>
+  <td>{{ m.notes|truncatechars:80 }}</td>
+  <td><a href="/admin/app/unknownmachine/{{ m.pk }}/change/">edit</a></td>
+</tr>
+{% empty %}
+<tr><td colspan="6"><em>No unknown machines.</em></td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}

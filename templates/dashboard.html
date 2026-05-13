@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+{% if server_settings.monitor_only %}
+<div class="banner warn">
+  <strong>Monitor-only mode is ON.</strong>
+  Sync responses force <code>client_mode=MONITOR</code> and <code>ruledownload</code> returns no rules.
+  Block events are still captured. Deploy policy via the mobileconfigs below.
+</div>
+{% endif %}
+
+<h1>Dashboard</h1>
+<div class="stat-grid">
+  <div class="stat"><div class="n">{{ rule_count }}</div><div class="l">Rules total</div></div>
+  <div class="stat"><div class="n">{{ rules_teachers }}</div><div class="l">Apply to teachers</div></div>
+  <div class="stat"><div class="n">{{ rules_students }}</div><div class="l">Apply to students</div></div>
+  <div class="stat"><div class="n">{{ rules_both }}</div><div class="l">Apply to both</div></div>
+  <div class="stat"><div class="n">{{ events_24h }}</div><div class="l">Events (24h)</div></div>
+  <div class="stat"><div class="n">{{ blocks_24h }}</div><div class="l">Blocks (24h)</div></div>
+  <div class="stat"><div class="n">{{ unknown_count }}</div><div class="l">Unknown machines</div></div>
+  <div class="stat"><div class="n">{{ in_flight_sessions }}</div><div class="l">In-flight syncs</div></div>
+</div>
+
+<h2 style="margin-top:24px">Configuration profiles</h2>
+<p style="color:#555;">
+  Download the current rule set as a macOS <code>.mobileconfig</code>. Embeds <code>ClientMode</code>
+  and <code>StaticRules</code> for the selected audience using the
+  <code>com.northpolesec.santa</code> payload. Upload to your MDM as a custom profile.
+</p>
+<p>
+  <a class="btn" href="{% url 'mobileconfig-download' 'student' %}">Download — Students ({{ rules_students }} rules)</a>
+  <a class="btn" href="{% url 'mobileconfig-download' 'teacher' %}">Download — Teachers ({{ rules_teachers }} rules)</a>
+</p>
+
+<h2 style="margin-top:24px">Quick actions</h2>
+<p>
+  <a class="btn" href="{% url 'rule-create' %}">+ New rule</a>
+  <a class="btn secondary" href="{% url 'server-settings' %}">Server settings</a>
+  <form method="post" action="{% url 'toggle-monitor-only' %}" style="display:inline">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{% url 'dashboard' %}">
+    <button class="btn {% if server_settings.monitor_only %}danger{% endif %}" type="submit">
+      {% if server_settings.monitor_only %}Turn monitor-only OFF{% else %}Turn monitor-only ON{% endif %}
+    </button>
+  </form>
+</p>
+{% endblock %}

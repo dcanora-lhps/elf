@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Server settings — elf{% endblock %}
+{% block content %}
+<h1>Server settings</h1>
+
+{% if settings.monitor_only %}
+<div class="banner warn">
+  Monitor-only mode is currently <strong>ON</strong>. Sync forces MONITOR, rules go out via mobileconfig.
+</div>
+{% else %}
+<div class="banner info">
+  Monitor-only mode is <strong>OFF</strong>. Rules are pushed to clients via sync as normal.
+</div>
+{% endif %}
+
+<form method="post" style="max-width: 720px;">{% csrf_token %}
+{{ form.non_field_errors }}
+<table>
+{% for field in form %}
+<tr>
+  <th style="width: 260px;"><label for="{{ field.id_for_label }}">{{ field.label }}</label></th>
+  <td>{{ field }}{% if field.help_text %}<div style="color:#666;font-size:12px;max-width:440px">{{ field.help_text }}</div>{% endif %}{{ field.errors }}</td>
+</tr>
+{% endfor %}
+</table>
+<p>
+  <button class="btn" type="submit">Save</button>
+  <a class="btn secondary" href="{% url 'dashboard' %}">Back</a>
+</p>
+</form>
+
+<h2 style="margin-top:32px;">Mobileconfig downloads</h2>
+<p>
+  <a class="btn" href="{% url 'mobileconfig-download' 'student' %}">Download — Students</a>
+  <a class="btn" href="{% url 'mobileconfig-download' 'teacher' %}">Download — Teachers</a>
+</p>
+<p style="color:#555;">
+  Rules with policy <code>REMOVE</code> are skipped (REMOVE only applies over sync).
+  <code>CEL</code> rules without a <code>cel_expr</code> are also skipped.
+</p>
+{% endblock %}

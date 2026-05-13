@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Delete rule — elf{% endblock %}
+{% block content %}
+<h1>Delete rule?</h1>
+<p>This will remove the rule from the database. To delete the rule from Santa clients, set its policy to <code>REMOVE</code> and wait for clients to sync before deleting.</p>
+<dl class="dl">
+  <dt>Identifier</dt><dd class="mono">{{ object.identifier }}</dd>
+  <dt>Type</dt><dd>{{ object.rule_type }}</dd>
+  <dt>Policy</dt><dd>{{ object.policy }}</dd>
+  <dt>Students</dt><dd>{{ object.applies_to_students|yesno }}</dd>
+  <dt>Teachers</dt><dd>{{ object.applies_to_teachers|yesno }}</dd>
+</dl>
+<form method="post">{% csrf_token %}
+  <button class="btn danger" type="submit">Delete</button>
+  <a class="btn secondary" href="{% url 'rule-list' %}">Cancel</a>
+</form>
+{% endblock %}

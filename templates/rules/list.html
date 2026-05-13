@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Rules — elf{% endblock %}
+{% block content %}
+<h1>Rules</h1>
+
+<div class="filters">
+  <form method="get">
+    <div><label>Search</label>{{ filter_form.q }}</div>
+    <div><label>Rule type</label>{{ filter_form.rule_type }}</div>
+    <div><label>Policy</label>{{ filter_form.policy }}</div>
+    <div><label>Audience</label>{{ filter_form.audience }}</div>
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn secondary" href="{% url 'rule-list' %}">Reset</a>
+    <a class="btn" style="margin-left:auto" href="{% url 'rule-create' %}">+ New rule</a>
+  </form>
+</div>
+
+<table>
+<thead>
+<tr><th>Identifier</th><th>Type</th><th>Policy</th><th>Students</th><th>Teachers</th><th>Updated</th><th></th></tr>
+</thead>
+<tbody>
+{% for rule in rules %}
+<tr>
+  <td class="mono" title="{{ rule.identifier }}">{{ rule.identifier|truncatechars:60 }}{% if rule.custom_msg %}<br><small style="color:#666">{{ rule.custom_msg|truncatechars:80 }}</small>{% endif %}{% if rule.comment %}<br><small style="color:#888;font-style:italic" title="{{ rule.comment }}">note: {{ rule.comment|truncatechars:90 }}</small>{% endif %}</td>
+  <td>{{ rule.rule_type }}</td>
+  <td>{% if rule.policy|slice:":5" == "BLOCK" or rule.policy == "SILENT_BLOCKLIST" %}<span class="pill block">{{ rule.policy }}</span>{% elif rule.policy|slice:":5" == "ALLOW" %}<span class="pill allow">{{ rule.policy }}</span>{% else %}<span class="pill">{{ rule.policy }}</span>{% endif %}</td>
+  <td>{% if rule.applies_to_students %}<span class="pill student">yes</span>{% else %}—{% endif %}</td>
+  <td>{% if rule.applies_to_teachers %}<span class="pill teacher">yes</span>{% else %}—{% endif %}</td>
+  <td>{{ rule.updated_at|date:"Y-m-d H:i" }}</td>
+  <td><a href="{% url 'rule-edit' rule.pk %}">edit</a> · <a href="{% url 'rule-delete' rule.pk %}">delete</a></td>
+</tr>
+{% empty %}
+<tr><td colspan="7"><em>No rules yet.</em></td></tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% if is_paginated %}
+<div class="pagination">
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&{{ querystring }}">previous</a>{% endif %}
+  <span>page {{ page_obj.number }} of {{ paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&{{ querystring }}">next</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

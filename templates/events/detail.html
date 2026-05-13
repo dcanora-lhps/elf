@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Event {{ event.pk }} — elf{% endblock %}
+{% block content %}
+<p><a href="{% url 'event-list' %}">← back to events</a></p>
+<h1>Event #{{ event.pk }}</h1>
+
+<dl class="dl">
+  <dt>Received</dt><dd>{{ event.received_at }}</dd>
+  <dt>Machine</dt><dd class="mono">{{ event.machine_id }} <span class="pill {{ event.audience }}">{{ event.audience }}</span></dd>
+  <dt>Decision</dt><dd>{{ event.decision }}</dd>
+  <dt>Execution time</dt><dd>{{ event.execution_time|default:"—" }}</dd>
+  <dt>Executing user</dt><dd>{{ event.executing_user|default:"—" }}</dd>
+  <dt>File name</dt><dd>{{ event.file_name|default:"—" }}</dd>
+  <dt>File path</dt><dd class="mono">{{ event.file_path|default:"—" }}</dd>
+  <dt>File SHA-256</dt><dd class="mono">{{ event.file_sha256|default:"—" }}</dd>
+  <dt>Bundle</dt><dd>{{ event.file_bundle_id|default:"—" }} {{ event.file_bundle_version_string }}</dd>
+  <dt>Bundle hash</dt><dd class="mono">{{ event.file_bundle_hash|default:"—" }}</dd>
+  <dt>Signing ID</dt><dd class="mono">{{ event.signing_id|default:"—" }}</dd>
+  <dt>Team ID</dt><dd class="mono">{{ event.team_id|default:"—" }}</dd>
+  <dt>CDHash</dt><dd class="mono">{{ event.cdhash|default:"—" }}</dd>
+  <dt>Signing status</dt><dd>{{ event.signing_status|default:"—" }}</dd>
+  <dt>Static rule</dt><dd>{{ event.static_rule|yesno }}</dd>
+  <dt>PID / parent</dt><dd>{{ event.pid|default:"—" }} / {{ event.ppid|default:"—" }} ({{ event.parent_name|default:"—" }})</dd>
+</dl>
+
+<h3>Signing chain</h3>
+{% if event.signing_chain %}
+<table>
+<thead><tr><th>CN</th><th>Org</th><th>OU</th><th>SHA-256</th><th>Valid</th></tr></thead>
+<tbody>
+{% for c in event.signing_chain %}
+<tr>
+  <td>{{ c.cn }}</td><td>{{ c.org }}</td><td>{{ c.ou }}</td>
+  <td class="mono">{{ c.sha256|slice:":16" }}</td>
+  <td>{{ c.valid_from }} – {{ c.valid_until }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<p><em>No signing chain.</em></p>
+{% endif %}
+
+<h3>Raw payload</h3>
+<pre>{{ raw_pretty }}</pre>
+{% endblock %}

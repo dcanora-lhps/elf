@@ -1,0 +1,52 @@
+# elf — Santa sync server
+#
+# Usage:
+#   cp .env.example .env       # then edit the values
+#   docker compose build
+#   docker compose up -d
+#   docker compose exec web python manage.py createsuperuser
+#
+# TLS: this stack does NOT terminate TLS. Put a reverse proxy (Caddy, Traefik,
+# nginx, Cloudflare Tunnel, etc.) in front and forward to web:8000. Set
+# DJANGO_BEHIND_PROXY=1 so Django trusts X-Forwarded-Proto.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-elf}
+      POSTGRES_USER: ${POSTGRES_USER:-elf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - elf_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-elf} -d ${POSTGRES_DB:-elf}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    image: elf-santa-sync:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?DJANGO_ALLOWED_HOSTS must be set in .env}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      DJANGO_BEHIND_PROXY: ${DJANGO_BEHIND_PROXY:-1}
+      DATABASE_URL: postgres://${POSTGRES_USER:-elf}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-elf}
+      SANTA_SYNC_TOKEN: ${SANTA_SYNC_TOKEN:?SANTA_SYNC_TOKEN must be set in .env}
+      SANTA_DEFAULT_CLIENT_MODE: ${SANTA_DEFAULT_CLIENT_MODE:-MONITOR}
+      SANTA_DEFAULT_BATCH_SIZE: ${SANTA_DEFAULT_BATCH_SIZE:-50}
+      SANTA_FULL_SYNC_INTERVAL_SECONDS: ${SANTA_FULL_SYNC_INTERVAL_SECONDS:-600}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+    ports:
+      - "${HOST_BIND:-127.0.0.1}:${HOST_PORT:-8000}:8000"
+
+volumes:
+  elf_pg_data:
