@@ -1,5 +1,7 @@
+import gzip
 import hmac
 import json
+import zlib
 from functools import wraps
 
 from django.conf import settings
@@ -13,6 +15,27 @@ def _extract_token(request):
     if auth.lower().startswith("bearer "):
         return auth.split(None, 1)[1].strip()
     return request.META.get("HTTP_X_SANTA_TOKEN", "").strip()
+
+
+def _decompress(body, encoding):
+    """Decompress a request body per Content-Encoding.
+
+    Santa's sync client sends compressed payloads with Content-Encoding either
+    "deflate" (the new default) or "zlib" (the legacy Upvote-compatibility mode).
+    Both carry a zlib-wrapped deflate stream. We also accept gzip.
+    """
+    if not body:
+        return body
+    enc = (encoding or "").lower().strip()
+    if enc == "gzip":
+        return gzip.decompress(body)
+    if enc in ("deflate", "zlib"):
+        try:
+            return zlib.decompress(body)
+        except zlib.error:
+            # Some clients send raw deflate without the zlib wrapper.
+            return zlib.decompress(body, -zlib.MAX_WBITS)
+    return body
 
 
 def json_endpoint(view):
@@ -29,8 +52,13 @@ def json_endpoint(view):
         supplied = _extract_token(request)
         if not supplied or not hmac.compare_digest(supplied, expected):
             return JsonResponse({"error": "unauthorized"}, status=401)
+        raw = request.body or b""
         try:
-            body = json.loads(request.body or b"{}")
+            raw = _decompress(raw, request.META.get("HTTP_CONTENT_ENCODING", ""))
+        except (OSError, zlib.error) as e:
+            return JsonResponse({"error": f"decompression failed: {e}"}, status=400)
+        try:
+            body = json.loads(raw or b"{}")
         except json.JSONDecodeError:
             return JsonResponse({"error": "invalid json"}, status=400)
         if not isinstance(body, dict):
