@@ -188,6 +188,10 @@ class EventListView(LoginRequiredMixin, ListView):
                     | Q(cdhash__icontains=q)
                     | Q(file_path__icontains=q)
                 )
+            if d.get("hide_covered"):
+                covered = _covered_by_rule_q()
+                if covered:
+                    qs = qs.exclude(covered)
             requested_sort = d.get("sort") or ""
             if requested_sort in SORT_KEYS:
                 sort = requested_sort
@@ -198,6 +202,38 @@ class EventListView(LoginRequiredMixin, ListView):
         ctx["filter_form"] = self.filter_form
         ctx["querystring"] = self.request.GET.urlencode()
         return ctx
+
+
+_RULE_TYPE_TO_EVENT_FIELD = {
+    "BINARY": "file_sha256",
+    "SIGNINGID": "signing_id",
+    "TEAMID": "team_id",
+    "CDHASH": "cdhash",
+}
+
+
+def _covered_by_rule_q():
+    """Build a Q matching events whose (rule_type, identifier, audience) is covered by an existing Rule.
+
+    BINARY/SIGNINGID/TEAMID/CDHASH only — CERTIFICATE rules are skipped because the leaf cert
+    SHA lives inside the event's JSON signing_chain and isn't queryable with a plain field lookup.
+    """
+    covered = Q()
+    for r in Rule.objects.all().only(
+        "rule_type", "identifier", "applies_to_students", "applies_to_teachers"
+    ):
+        field = _RULE_TYPE_TO_EVENT_FIELD.get(r.rule_type)
+        if not field or not r.identifier:
+            continue
+        audiences = []
+        if r.applies_to_students:
+            audiences.append(Audience.STUDENT)
+        if r.applies_to_teachers:
+            audiences.append(Audience.TEACHER)
+        if not audiences:
+            continue
+        covered |= Q(**{field: r.identifier, "audience__in": audiences})
+    return covered
 
 
 AGGREGATE_SORTS = {
@@ -242,6 +278,10 @@ def event_aggregate(request):
                 | Q(file_path__icontains=q)
                 | Q(file_bundle_id__icontains=q)
             )
+        if d.get("hide_covered"):
+            covered = _covered_by_rule_q()
+            if covered:
+                qs = qs.exclude(covered)
 
     sort_param = request.GET.get("sort") or "-count"
     if sort_param not in AGGREGATE_SORTS:

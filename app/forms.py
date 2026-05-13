@@ -85,6 +85,7 @@ class EventFilterForm(forms.Form):
     machine_id = forms.CharField(required=False)
     date_from = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
     date_to = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    hide_covered = forms.BooleanField(required=False, label="Hide events covered by a rule")
     sort = forms.ChoiceField(required=False, choices=[("", "")] + SORT_CHOICES)
 
 
