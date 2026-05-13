@@ -36,7 +36,7 @@ services:
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
       DJANGO_DEBUG: "0"
-      DJANGO_ALLOWED_HOSTS: ${DOMAIN:?DOMAIN must be set in .env}
+      DJANGO_ALLOWED_HOSTS: ${DOMAIN:?DOMAIN must be set in .env},127.0.0.1,localhost
       DJANGO_CSRF_TRUSTED_ORIGINS: https://${DOMAIN}
       DJANGO_BEHIND_PROXY: "1"
       DATABASE_URL: postgres://${POSTGRES_USER:-elf}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-elf}
