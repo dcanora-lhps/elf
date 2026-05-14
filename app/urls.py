@@ -23,5 +23,4 @@ urlpatterns = [
     path("machines/<path:machine_id>/", views.machine_detail, name="machine-detail"),
     path("settings/", views.server_settings_view, name="server-settings"),
     path("settings/toggle-monitor-only/", views.toggle_monitor_only, name="toggle-monitor-only"),
-    path("mobileconfig/<str:audience>/", views.mobileconfig_download, name="mobileconfig-download"),
 ]

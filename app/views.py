@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db.models import Count, Max, Min, Q
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import StreamingHttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -24,7 +24,6 @@ from .forms import (
     RuleForm,
     ServerSettingsForm,
 )
-from .mobileconfig import AUDIENCE_LABELS, build_mobileconfig
 from .models import (
     Audience,
     AuxiliaryEvent,
@@ -92,16 +91,6 @@ def toggle_monitor_only(request):
         f"Monitor-only mode {'enabled' if obj.monitor_only else 'disabled'}.",
     )
     return redirect(request.POST.get("next") or "dashboard")
-
-
-@login_required
-def mobileconfig_download(request, audience):
-    if audience not in AUDIENCE_LABELS:
-        return HttpResponse("Unknown audience.", status=404)
-    body, _ = build_mobileconfig(audience)
-    resp = HttpResponse(body, content_type="application/x-apple-aspen-config")
-    resp["Content-Disposition"] = f'attachment; filename="santa-{audience}.mobileconfig"'
-    return resp
 
 
 RULE_LIST_SORTS = {

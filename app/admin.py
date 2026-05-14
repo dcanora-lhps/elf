@@ -14,7 +14,7 @@ from .models import (
 
 @admin.register(ServerSettings)
 class ServerSettingsAdmin(admin.ModelAdmin):
-    list_display = ("monitor_only", "mobileconfig_client_mode", "organization")
+    list_display = ("default_client_mode", "monitor_only")
 
     def has_add_permission(self, request):
         return not ServerSettings.objects.exists()

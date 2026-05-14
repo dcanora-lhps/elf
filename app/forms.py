@@ -9,9 +9,6 @@ class ServerSettingsForm(forms.ModelForm):
         fields = [
             "default_client_mode",
             "monitor_only",
-            "mobileconfig_client_mode",
-            "organization",
-            "payload_identifier_prefix",
             "allowed_path_regex",
             "event_detail_url",
             "event_detail_text",
@@ -33,7 +30,6 @@ class ServerSettingsForm(forms.ModelForm):
     # Section grouping for the settings template.
     SECTIONS = (
         ("Sync", ("default_client_mode", "monitor_only", "allowed_path_regex")),
-        ("Profile (mobileconfig)", ("mobileconfig_client_mode", "organization", "payload_identifier_prefix")),
         (
             "Block dialog defaults",
             (

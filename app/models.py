@@ -89,8 +89,7 @@ class Rule(models.Model):
             "(needs transitive rules enabled; use sparingly). "
             "BLOCKLIST = deny and show the block dialog. "
             "SILENT_BLOCKLIST = deny with no dialog. "
-            "REMOVE = delete any previously-synced rule with the same identifier and type "
-            "(no effect in a mobileconfig — sync-only). "
+            "REMOVE = delete any previously-synced rule with the same identifier and type. "
             "CEL = evaluate the CEL expression below at decision time."
         ),
     )
@@ -133,24 +132,20 @@ class Rule(models.Model):
     )
     applies_to_middle_school = models.BooleanField(
         default=False,
-        help_text=(
-            "Send this rule to machines whose machine_id starts with \"MS-\", and include it in "
-            "the Middle School .mobileconfig download."
-        ),
+        help_text='Send this rule to machines whose machine_id starts with "MS-".',
     )
     applies_to_upper_school = models.BooleanField(
         default=False,
         help_text=(
-            "Send this rule to machines whose machine_id starts with \"US-\" (also the default "
-            "audience for unrecognized machines), and include it in the Upper School "
-            ".mobileconfig download."
+            'Send this rule to machines whose machine_id starts with "US-" (also the default '
+            "audience for unrecognized machines)."
         ),
     )
     applies_to_teachers = models.BooleanField(
         default=False,
         help_text=(
-            "Send this rule to machines whose machine_id contains \"EMP\", and include it in the "
-            "Teachers .mobileconfig download. (At least one audience must be checked.)"
+            'Send this rule to machines whose machine_id contains "EMP". '
+            "(At least one audience must be checked.)"
         ),
     )
     comment = models.TextField(
@@ -158,7 +153,7 @@ class Rule(models.Model):
         default="",
         help_text=(
             "Internal notes for admins (why this rule exists, ticket links, etc.). "
-            "Never sent to Santa clients or included in mobileconfig downloads."
+            "Never sent to Santa clients."
         ),
     )
     creation_time = models.DateTimeField(default=timezone.now)
@@ -339,34 +334,19 @@ class ServerSettings(models.Model):
             "overrides both the global default and any per-machine settings."
         ),
     )
-    mobileconfig_client_mode = models.PositiveSmallIntegerField(
-        default=2,
-        choices=[(1, "MONITOR"), (2, "LOCKDOWN"), (3, "STANDALONE")],
-        help_text="ClientMode value (integer) embedded in generated .mobileconfig payloads.",
-    )
-    organization = models.CharField(
-        max_length=128,
-        default="elf",
-        help_text="PayloadOrganization shown in System Settings → Profiles.",
-    )
-    payload_identifier_prefix = models.CharField(
-        max_length=255,
-        default="com.elf.santa",
-        help_text="Reverse-DNS prefix for mobileconfig PayloadIdentifier values.",
-    )
     allowed_path_regex = models.CharField(
         max_length=1024,
         blank=True,
         default=r"^/(?:System|usr/(?:bin|libexec|sbin))/",
         help_text=(
             "ICU regex. Executions from paths matching this pattern are allowed when no "
-            "other rule matches. Emitted as <code>AllowedPathRegex</code> in the mobileconfig "
-            "and as <code>allowed_path_regex</code> in preflight responses. Leave blank to omit. "
-            "Note: anything writable into these paths effectively bypasses Santa, so keep it tight."
+            "other rule matches. Emitted as <code>allowed_path_regex</code> in preflight "
+            "responses. Leave blank to omit. Note: anything writable into these paths "
+            "effectively bypasses Santa, so keep it tight."
         ),
     )
-    # Block-dialog customization. Pushed via preflight (sync) and embedded in mobileconfig.
-    # Per-rule custom_msg/custom_url still wins when set on a matching Rule.
+    # Block-dialog customization pushed via preflight. Per-rule custom_msg/custom_url
+    # still wins when set on a matching Rule.
     event_detail_url = models.CharField(
         max_length=1024,
         blank=True,
