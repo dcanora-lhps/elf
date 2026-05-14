@@ -5,7 +5,7 @@
 
 {% if settings.monitor_only %}
 <div class="banner warn">
-  Monitor-only mode is currently <strong>ON</strong>. Sync forces MONITOR, rules go out via mobileconfig.
+  Monitor-only mode is currently <strong>ON</strong>. Sync forces MONITOR and ruledownload returns no rules.
 </div>
 {% else %}
 <div class="banner info">
@@ -28,14 +28,4 @@
   <a class="btn secondary" href="{% url 'dashboard' %}">Back</a>
 </p>
 </form>
-
-<h2 style="margin-top:32px;">Mobileconfig downloads</h2>
-<p>
-  <a class="btn" href="{% url 'mobileconfig-download' 'student' %}">Download — Students</a>
-  <a class="btn" href="{% url 'mobileconfig-download' 'teacher' %}">Download — Teachers</a>
-</p>
-<p style="color:#555;">
-  Rules with policy <code>REMOVE</code> are skipped (REMOVE only applies over sync).
-  <code>CEL</code> rules without a <code>cel_expr</code> are also skipped.
-</p>
 {% endblock %}

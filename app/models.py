@@ -49,7 +49,8 @@ CLEAN_SYNC_TYPES = {
 
 class Audience(models.TextChoices):
     TEACHER = "teacher"
-    STUDENT = "student"
+    MIDDLE_SCHOOL = "middle_school"
+    UPPER_SCHOOL = "upper_school"
 
 
 class Rule(models.Model):
@@ -130,18 +131,26 @@ class Rule(models.Model):
             "non-CEL policies."
         ),
     )
-    applies_to_students = models.BooleanField(
+    applies_to_middle_school = models.BooleanField(
         default=False,
         help_text=(
-            "Send this rule to machines whose machine_id contains \"STU\", and include it in the "
-            "Students .mobileconfig download."
+            "Send this rule to machines whose machine_id starts with \"MS-\", and include it in "
+            "the Middle School .mobileconfig download."
+        ),
+    )
+    applies_to_upper_school = models.BooleanField(
+        default=False,
+        help_text=(
+            "Send this rule to machines whose machine_id starts with \"US-\" (also the default "
+            "audience for unrecognized machines), and include it in the Upper School "
+            ".mobileconfig download."
         ),
     )
     applies_to_teachers = models.BooleanField(
         default=False,
         help_text=(
             "Send this rule to machines whose machine_id contains \"EMP\", and include it in the "
-            "Teachers .mobileconfig download. (At least one of Students or Teachers must be checked.)"
+            "Teachers .mobileconfig download. (At least one audience must be checked.)"
         ),
     )
     comment = models.TextField(
@@ -159,13 +168,18 @@ class Rule(models.Model):
         constraints = [
             UniqueConstraint(fields=["identifier", "rule_type"], name="uniq_identifier_type"),
             CheckConstraint(
-                condition=Q(applies_to_students=True) | Q(applies_to_teachers=True),
+                condition=(
+                    Q(applies_to_middle_school=True)
+                    | Q(applies_to_upper_school=True)
+                    | Q(applies_to_teachers=True)
+                ),
                 name="rule_has_audience",
             ),
         ]
         indexes = [
             models.Index(fields=["updated_at", "id"]),
-            models.Index(fields=["applies_to_students"]),
+            models.Index(fields=["applies_to_middle_school"]),
+            models.Index(fields=["applies_to_upper_school"]),
             models.Index(fields=["applies_to_teachers"]),
         ]
         ordering = ["-updated_at"]

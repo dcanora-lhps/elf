@@ -2,25 +2,38 @@ from .models import Audience, Rule
 
 
 def audience_for(machine_id: str) -> str:
-    """Classify a machine. Students are the default — only machines explicitly marked
-    with "EMP" in their machine_id are treated as teachers; everyone else is STUDENT.
+    """Classify a machine. Routing rules:
+
+    - machine_id contains "EMP"          → teacher
+    - machine_id starts with "MS-"       → middle school
+    - machine_id starts with "US-"       → upper school
+    - anything else                       → upper school (default)
     """
-    if "EMP" in (machine_id or ""):
+    mid = machine_id or ""
+    if "EMP" in mid:
         return Audience.TEACHER
-    return Audience.STUDENT
+    if mid.startswith("MS-"):
+        return Audience.MIDDLE_SCHOOL
+    if mid.startswith("US-"):
+        return Audience.UPPER_SCHOOL
+    return Audience.UPPER_SCHOOL
 
 
 def is_recognized_machine_id(machine_id: str) -> bool:
-    """True if machine_id has an explicit EMP or STU marker. Used only for
-    UnknownMachine tracking — these machines still get the student ruleset by
-    default; this just surfaces them in the admin UI for triage.
+    """True if machine_id has an explicit EMP / MS- / US- marker. Used only for
+    UnknownMachine tracking — unrecognized machines still get the upper-school
+    ruleset by default; this just surfaces them in the admin UI for triage.
     """
     mid = machine_id or ""
-    return "EMP" in mid or "STU" in mid
+    return "EMP" in mid or mid.startswith("MS-") or mid.startswith("US-")
 
 
 def rules_queryset_for(audience: str):
     qs = Rule.objects.all().order_by("updated_at", "id")
     if audience == Audience.TEACHER:
         return qs.filter(applies_to_teachers=True)
-    return qs.filter(applies_to_students=True)
+    if audience == Audience.MIDDLE_SCHOOL:
+        return qs.filter(applies_to_middle_school=True)
+    if audience == Audience.UPPER_SCHOOL:
+        return qs.filter(applies_to_upper_school=True)
+    return qs.none()

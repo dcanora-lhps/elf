@@ -16,6 +16,7 @@ urlpatterns = [
     path("rules/<int:pk>/delete/", views.RuleDeleteView.as_view(), name="rule-delete"),
     path("events/", views.EventListView.as_view(), name="event-list"),
     path("events/aggregate/", views.event_aggregate, name="event-aggregate"),
+    path("events/export.csv", views.event_export_csv, name="event-export-csv"),
     path("events/<int:pk>/", views.EventDetailView.as_view(), name="event-detail"),
     path("unknown/", views.UnknownMachineListView.as_view(), name="unknown-list"),
     path("settings/", views.server_settings_view, name="server-settings"),

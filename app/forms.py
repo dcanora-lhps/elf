@@ -40,7 +40,8 @@ class RuleForm(forms.ModelForm):
             "custom_url",
             "notification_app_name",
             "cel_expr",
-            "applies_to_students",
+            "applies_to_middle_school",
+            "applies_to_upper_school",
             "applies_to_teachers",
             "comment",
         ]
@@ -52,11 +53,32 @@ class RuleForm(forms.ModelForm):
             "identifier": forms.TextInput(attrs={"size": 60}),
         }
 
+    # Visual sections for the form template. Each tuple: (section_title, [field_names]).
+    SECTIONS = (
+        ("Match", ("identifier", "rule_type", "policy")),
+        ("Block dialog", ("custom_msg", "custom_url", "notification_app_name")),
+        ("CEL expression", ("cel_expr",)),
+        (
+            "Audience",
+            ("applies_to_middle_school", "applies_to_upper_school", "applies_to_teachers"),
+        ),
+        ("Notes", ("comment",)),
+    )
+
+    def sectioned_fields(self):
+        """Yield (section_title, [BoundField, ...]) for template rendering."""
+        for title, names in self.SECTIONS:
+            yield title, [self[name] for name in names]
+
     def clean(self):
         cleaned = super().clean()
-        if not (cleaned.get("applies_to_students") or cleaned.get("applies_to_teachers")):
+        if not (
+            cleaned.get("applies_to_middle_school")
+            or cleaned.get("applies_to_upper_school")
+            or cleaned.get("applies_to_teachers")
+        ):
             raise forms.ValidationError(
-                "Rule must apply to at least one of students or teachers."
+                "Rule must apply to at least one audience (Middle School, Upper School, or Teachers)."
             )
         if cleaned.get("policy") == Policy.CEL and not cleaned.get("cel_expr"):
             self.add_error("cel_expr", "Required when policy is CEL.")
@@ -92,6 +114,16 @@ class EventFilterForm(forms.Form):
     sort = forms.ChoiceField(required=False, choices=[("", "")] + SORT_CHOICES)
 
 
+RULE_AUDIENCE_CHOICES = [
+    ("", "Any"),
+    ("middle_school", "Middle School"),
+    ("upper_school", "Upper School"),
+    ("teachers", "Teachers"),
+    ("any_student", "Any student (MS or US)"),
+    ("all", "All three audiences"),
+]
+
+
 class RuleFilterForm(forms.Form):
     q = forms.CharField(required=False, label="Search")
     rule_type = forms.ChoiceField(
@@ -100,7 +132,4 @@ class RuleFilterForm(forms.Form):
     policy = forms.ChoiceField(
         required=False, choices=[("", "Any")] + list(Policy.choices)
     )
-    audience = forms.ChoiceField(
-        required=False,
-        choices=[("", "Any"), ("students", "Students"), ("teachers", "Teachers"), ("both", "Both")],
-    )
+    audience = forms.ChoiceField(required=False, choices=RULE_AUDIENCE_CHOICES)

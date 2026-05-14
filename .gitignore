@@ -40,3 +40,4 @@ Thumbs.db
 
 DEPLOY.md
 *.sqlite3
+*.sqlite3.bak.*

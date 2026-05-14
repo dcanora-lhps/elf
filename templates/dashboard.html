@@ -4,32 +4,52 @@
 <div class="banner warn">
   <strong>Monitor-only mode is ON.</strong>
   Sync responses force <code>client_mode=MONITOR</code> and <code>ruledownload</code> returns no rules.
-  Block events are still captured. Deploy policy via the mobileconfigs below.
+  Block events are still captured.
 </div>
 {% endif %}
 
 <h1>Dashboard</h1>
 <div class="stat-grid">
   <div class="stat"><div class="n">{{ rule_count }}</div><div class="l">Rules total</div></div>
+  <div class="stat"><div class="n">{{ rules_middle_school }}</div><div class="l">Apply to middle school</div></div>
+  <div class="stat"><div class="n">{{ rules_upper_school }}</div><div class="l">Apply to upper school</div></div>
   <div class="stat"><div class="n">{{ rules_teachers }}</div><div class="l">Apply to teachers</div></div>
-  <div class="stat"><div class="n">{{ rules_students }}</div><div class="l">Apply to students</div></div>
-  <div class="stat"><div class="n">{{ rules_both }}</div><div class="l">Apply to both</div></div>
   <div class="stat"><div class="n">{{ events_24h }}</div><div class="l">Events (24h)</div></div>
   <div class="stat"><div class="n">{{ blocks_24h }}</div><div class="l">Blocks (24h)</div></div>
   <div class="stat"><div class="n">{{ unknown_count }}</div><div class="l">Unknown machines</div></div>
   <div class="stat"><div class="n">{{ in_flight_sessions }}</div><div class="l">In-flight syncs</div></div>
 </div>
 
-<h2 style="margin-top:24px">Configuration profiles</h2>
-<p style="color:#555;">
-  Download the current rule set as a macOS <code>.mobileconfig</code>. Embeds <code>ClientMode</code>
-  and <code>StaticRules</code> for the selected audience using the
-  <code>com.northpolesec.santa</code> payload. Upload to your MDM as a custom profile.
-</p>
-<p>
-  <a class="btn" href="{% url 'mobileconfig-download' 'student' %}">Download — Students ({{ rules_students }} rules)</a>
-  <a class="btn" href="{% url 'mobileconfig-download' 'teacher' %}">Download — Teachers ({{ rules_teachers }} rules)</a>
-</p>
+<h2 style="margin-top:24px">Top blocked apps (24h)</h2>
+{% if top_blocked %}
+<table>
+<thead>
+<tr><th>Blocks</th><th>File</th><th>Team ID</th><th>Signing ID</th><th>Bundle ID</th><th>Last seen</th><th></th></tr>
+</thead>
+<tbody>
+{% for g in top_blocked %}
+<tr>
+  <td><span class="pill block">{{ g.count }}</span></td>
+  <td>{{ g.file_name|default:"(no name)" }}</td>
+  <td class="mono">{{ g.team_id|default:"—" }}</td>
+  <td class="mono" title="{{ g.signing_id }}">{{ g.signing_id|default:"—"|truncatechars:40 }}</td>
+  <td class="mono">{{ g.file_bundle_id|default:"—"|truncatechars:32 }}</td>
+  <td>{{ g.last_seen|date:"Y-m-d H:i" }}</td>
+  <td>
+    {% if g.team_id %}<a href="{% url 'rule-create' %}?rule_type=TEAMID&amp;identifier={{ g.team_id|urlencode }}">+ team rule</a>{% endif %}
+    {% if g.signing_id %}{% if g.team_id %} · {% endif %}<a href="{% url 'rule-create' %}?rule_type=SIGNINGID&amp;identifier={{ g.signing_id|urlencode }}">+ signing rule</a>{% endif %}
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<div class="empty">
+  <h3>No blocks in the last 24 hours</h3>
+  <p>When Santa denies an execution, the event will appear here for triage.</p>
+  <a class="btn secondary" href="{% url 'event-list' %}">Open events list →</a>
+</div>
+{% endif %}
 
 <h2 style="margin-top:24px">Quick actions</h2>
 <p>

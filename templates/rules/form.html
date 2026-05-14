@@ -2,20 +2,53 @@
 {% block title %}{% if object %}Edit rule{% else %}New rule{% endif %} — elf{% endblock %}
 {% block content %}
 <h1>{% if object %}Edit rule{% else %}New rule{% endif %}</h1>
-<form method="post" style="max-width: 720px;">{% csrf_token %}
+<form method="post" style="max-width: 760px;">{% csrf_token %}
 {% if back_to %}<input type="hidden" name="_back_to" value="{{ back_to }}">{% endif %}
 {{ form.non_field_errors }}
-<table>
-{% for field in form %}
-<tr>
-  <th style="width: 220px;"><label for="{{ field.id_for_label }}">{{ field.label }}</label></th>
-  <td>{{ field }}{% if field.help_text %}<div style="color:#666;font-size:12px;margin-top:4px;max-width:560px">{{ field.help_text|safe }}</div>{% endif %}{{ field.errors }}</td>
-</tr>
+
+{% for section_title, fields in form.sectioned_fields %}
+<div class="form-section">
+  <h3>{{ section_title }}</h3>
+  <table>
+    {% if section_title == "Audience" %}
+    <tr>
+      <th style="width: 220px;">Quick set</th>
+      <td>
+        <button type="button" class="btn secondary" id="audience-all-students" style="padding:2px 10px;font-size:12px;">All students (MS + US)</button>
+        <small style="color:#666;margin-left:8px;">Most app rules apply to both.</small>
+      </td>
+    </tr>
+    {% endif %}
+    {% for field in fields %}
+    <tr>
+      <th style="width: 220px;"><label for="{{ field.id_for_label }}">{{ field.label }}</label></th>
+      <td>
+        {{ field }}
+        {% if field.help_text %}<div style="color:#666;font-size:12px;margin-top:4px;max-width:560px">{{ field.help_text|safe }}</div>{% endif %}
+        {{ field.errors }}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
 {% endfor %}
-</table>
+
 <p>
   <button class="btn" type="submit">Save</button>
   <a class="btn secondary" href="{% if back_to %}{{ back_to }}{% else %}{% url 'rule-list' %}{% endif %}">Cancel</a>
 </p>
 </form>
+
+<script>
+(function () {
+  var btn = document.getElementById("audience-all-students");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    var ms = document.getElementById("id_applies_to_middle_school");
+    var us = document.getElementById("id_applies_to_upper_school");
+    if (ms) ms.checked = true;
+    if (us) us.checked = true;
+  });
+})();
+</script>
 {% endblock %}

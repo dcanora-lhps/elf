@@ -29,11 +29,18 @@ class RuleAdmin(admin.ModelAdmin):
         "identifier",
         "rule_type",
         "policy",
-        "applies_to_students",
+        "applies_to_middle_school",
+        "applies_to_upper_school",
         "applies_to_teachers",
         "updated_at",
     )
-    list_filter = ("rule_type", "policy", "applies_to_students", "applies_to_teachers")
+    list_filter = (
+        "rule_type",
+        "policy",
+        "applies_to_middle_school",
+        "applies_to_upper_school",
+        "applies_to_teachers",
+    )
     search_fields = ("identifier", "custom_msg", "notification_app_name", "comment")
     readonly_fields = ("updated_at",)
 

@@ -4,6 +4,7 @@
 <h1>Events by app</h1>
 <p>
   <a class="btn secondary" href="{% url 'event-list' %}{% if querystring %}?{{ querystring }}{% endif %}">← event list</a>
+  <a class="btn secondary" href="{% url 'event-export-csv' %}{% if filters_querystring %}?{{ filters_querystring }}{% endif %}">Download CSV</a>
   &nbsp;Grouped by <code>(team_id, signing_id, bundle_id, file_name)</code>.
   Totals: {{ total_groups }} groups across {{ total_events }} events.
 </p>
@@ -58,11 +59,17 @@
   <td>{{ g.last_seen|date:"Y-m-d H:i" }}</td>
 </tr>
 {% endspaceless %}
-{% empty %}
-<tr><td colspan="8"><em>No events match.</em></td></tr>
 {% endfor %}
 </tbody>
 </table>
+
+{% if not groups %}
+<div class="empty">
+  <h3>No grouped events match</h3>
+  <p>{% if filters_querystring %}Adjust filters or toggle "show events covered by a rule".{% else %}Once events come in, app-grouped totals will appear here.{% endif %}</p>
+  {% if filters_querystring %}<a class="btn secondary" href="{% url 'event-aggregate' %}">Clear filters</a>{% endif %}
+</div>
+{% endif %}
 
 {% if is_paginated %}
 <div class="pagination">

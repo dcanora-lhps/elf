@@ -7,7 +7,8 @@
   <dt>Identifier</dt><dd class="mono">{{ object.identifier }}</dd>
   <dt>Type</dt><dd>{{ object.rule_type }}</dd>
   <dt>Policy</dt><dd>{{ object.policy }}</dd>
-  <dt>Students</dt><dd>{{ object.applies_to_students|yesno }}</dd>
+  <dt>Middle school</dt><dd>{{ object.applies_to_middle_school|yesno }}</dd>
+  <dt>Upper school</dt><dd>{{ object.applies_to_upper_school|yesno }}</dd>
   <dt>Teachers</dt><dd>{{ object.applies_to_teachers|yesno }}</dd>
 </dl>
 <form method="post">{% csrf_token %}

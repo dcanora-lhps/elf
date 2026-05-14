@@ -1,3 +1,4 @@
+import csv
 import json
 from datetime import timedelta
 from urllib.parse import urlparse
@@ -7,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db.models import Count, Max, Min, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -33,13 +34,19 @@ from .models import (
 def dashboard(request):
     now = timezone.now()
     last_day = now - timedelta(days=1)
+
+    top_blocked = list(
+        Event.objects.filter(received_at__gte=last_day, decision__startswith="BLOCK_")
+        .values("team_id", "signing_id", "file_bundle_id", "file_name")
+        .annotate(count=Count("id"), last_seen=Max("received_at"))
+        .order_by("-count", "-last_seen")[:10]
+    )
+
     ctx = {
         "rule_count": Rule.objects.count(),
         "rules_teachers": Rule.objects.filter(applies_to_teachers=True).count(),
-        "rules_students": Rule.objects.filter(applies_to_students=True).count(),
-        "rules_both": Rule.objects.filter(
-            applies_to_teachers=True, applies_to_students=True
-        ).count(),
+        "rules_middle_school": Rule.objects.filter(applies_to_middle_school=True).count(),
+        "rules_upper_school": Rule.objects.filter(applies_to_upper_school=True).count(),
         "events_24h": Event.objects.filter(received_at__gte=last_day).count(),
         "blocks_24h": Event.objects.filter(
             received_at__gte=last_day, decision__startswith="BLOCK_"
@@ -47,6 +54,7 @@ def dashboard(request):
         "unknown_count": UnknownMachine.objects.count(),
         "in_flight_sessions": SyncSession.objects.filter(completed_at__isnull=True).count(),
         "server_settings": ServerSettings.get(),
+        "top_blocked": top_blocked,
     }
     return render(request, "dashboard.html", ctx)
 
@@ -88,6 +96,16 @@ def mobileconfig_download(request, audience):
     return resp
 
 
+RULE_LIST_SORTS = {
+    "-updated_at",
+    "updated_at",
+    "rule_type",
+    "-rule_type",
+    "policy",
+    "-policy",
+}
+
+
 class RuleListView(LoginRequiredMixin, ListView):
     model = Rule
     template_name = "rules/list.html"
@@ -111,18 +129,37 @@ class RuleListView(LoginRequiredMixin, ListView):
             if d.get("policy"):
                 qs = qs.filter(policy=d["policy"])
             aud = d.get("audience")
-            if aud == "students":
-                qs = qs.filter(applies_to_students=True)
+            if aud == "middle_school":
+                qs = qs.filter(applies_to_middle_school=True)
+            elif aud == "upper_school":
+                qs = qs.filter(applies_to_upper_school=True)
             elif aud == "teachers":
                 qs = qs.filter(applies_to_teachers=True)
-            elif aud == "both":
-                qs = qs.filter(applies_to_students=True, applies_to_teachers=True)
-        return qs.order_by("-updated_at")
+            elif aud == "any_student":
+                qs = qs.filter(
+                    Q(applies_to_middle_school=True) | Q(applies_to_upper_school=True)
+                )
+            elif aud == "all":
+                qs = qs.filter(
+                    applies_to_middle_school=True,
+                    applies_to_upper_school=True,
+                    applies_to_teachers=True,
+                )
+        sort = self.request.GET.get("sort") or "-updated_at"
+        if sort not in RULE_LIST_SORTS:
+            sort = "-updated_at"
+        self.current_sort = sort
+        return qs.order_by(sort, "-id")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["filter_form"] = self.filter_form
         ctx["querystring"] = self.request.GET.urlencode()
+        ctx["current_sort"] = getattr(self, "current_sort", "-updated_at")
+        filters_only = self.request.GET.copy()
+        filters_only.pop("sort", None)
+        filters_only.pop("page", None)
+        ctx["filters_querystring"] = filters_only.urlencode()
         return ctx
 
 
@@ -200,6 +237,45 @@ class RuleDeleteView(LoginRequiredMixin, DeleteView):
     success_url = reverse_lazy("rule-list")
 
 
+def _apply_event_filters(qs, filter_form, *, extended_search=False):
+    """Apply EventFilterForm cleaned_data to an Event queryset. When extended_search,
+    also searches file_bundle_id (used by the aggregate view).
+    """
+    if not filter_form.is_valid():
+        return qs
+    d = filter_form.cleaned_data
+    if d.get("audience"):
+        qs = qs.filter(audience=d["audience"])
+    if d.get("decision"):
+        qs = qs.filter(decision=d["decision"])
+    if d.get("only_blocks"):
+        qs = qs.filter(decision__startswith="BLOCK_")
+    if d.get("machine_id"):
+        qs = qs.filter(machine_id__icontains=d["machine_id"])
+    if d.get("date_from"):
+        qs = qs.filter(received_at__date__gte=d["date_from"])
+    if d.get("date_to"):
+        qs = qs.filter(received_at__date__lte=d["date_to"])
+    if d.get("q"):
+        q = d["q"]
+        text_q = (
+            Q(file_name__icontains=q)
+            | Q(file_sha256__icontains=q)
+            | Q(signing_id__icontains=q)
+            | Q(team_id__icontains=q)
+            | Q(cdhash__icontains=q)
+            | Q(file_path__icontains=q)
+        )
+        if extended_search:
+            text_q |= Q(file_bundle_id__icontains=q)
+        qs = qs.filter(text_q)
+    if not d.get("show_covered"):
+        covered = _covered_by_rule_q()
+        if covered:
+            qs = qs.exclude(covered)
+    return qs
+
+
 class EventListView(LoginRequiredMixin, ListView):
     model = Event
     template_name = "events/list.html"
@@ -209,36 +285,10 @@ class EventListView(LoginRequiredMixin, ListView):
     def get_queryset(self):
         qs = Event.objects.all()
         self.filter_form = EventFilterForm(self.request.GET)
+        qs = _apply_event_filters(qs, self.filter_form)
         sort = "-received_at"
         if self.filter_form.is_valid():
-            d = self.filter_form.cleaned_data
-            if d.get("audience"):
-                qs = qs.filter(audience=d["audience"])
-            if d.get("decision"):
-                qs = qs.filter(decision=d["decision"])
-            if d.get("only_blocks"):
-                qs = qs.filter(decision__startswith="BLOCK_")
-            if d.get("machine_id"):
-                qs = qs.filter(machine_id__icontains=d["machine_id"])
-            if d.get("date_from"):
-                qs = qs.filter(received_at__date__gte=d["date_from"])
-            if d.get("date_to"):
-                qs = qs.filter(received_at__date__lte=d["date_to"])
-            if d.get("q"):
-                q = d["q"]
-                qs = qs.filter(
-                    Q(file_name__icontains=q)
-                    | Q(file_sha256__icontains=q)
-                    | Q(signing_id__icontains=q)
-                    | Q(team_id__icontains=q)
-                    | Q(cdhash__icontains=q)
-                    | Q(file_path__icontains=q)
-                )
-            if not d.get("show_covered"):
-                covered = _covered_by_rule_q()
-                if covered:
-                    qs = qs.exclude(covered)
-            requested_sort = d.get("sort") or ""
+            requested_sort = self.filter_form.cleaned_data.get("sort") or ""
             if requested_sort in SORT_KEYS:
                 sort = requested_sort
         return qs.order_by(sort)
@@ -266,14 +316,20 @@ def _covered_by_rule_q():
     """
     covered = Q()
     for r in Rule.objects.all().only(
-        "rule_type", "identifier", "applies_to_students", "applies_to_teachers"
+        "rule_type",
+        "identifier",
+        "applies_to_middle_school",
+        "applies_to_upper_school",
+        "applies_to_teachers",
     ):
         field = _RULE_TYPE_TO_EVENT_FIELD.get(r.rule_type)
         if not field or not r.identifier:
             continue
         audiences = []
-        if r.applies_to_students:
-            audiences.append(Audience.STUDENT)
+        if r.applies_to_middle_school:
+            audiences.append(Audience.MIDDLE_SCHOOL)
+        if r.applies_to_upper_school:
+            audiences.append(Audience.UPPER_SCHOOL)
         if r.applies_to_teachers:
             audiences.append(Audience.TEACHER)
         if not audiences:
@@ -299,35 +355,7 @@ def event_aggregate(request):
     """Group events by app-identity and show counts."""
     qs = Event.objects.all()
     filter_form = EventFilterForm(request.GET)
-    if filter_form.is_valid():
-        d = filter_form.cleaned_data
-        if d.get("audience"):
-            qs = qs.filter(audience=d["audience"])
-        if d.get("decision"):
-            qs = qs.filter(decision=d["decision"])
-        if d.get("only_blocks"):
-            qs = qs.filter(decision__startswith="BLOCK_")
-        if d.get("machine_id"):
-            qs = qs.filter(machine_id__icontains=d["machine_id"])
-        if d.get("date_from"):
-            qs = qs.filter(received_at__date__gte=d["date_from"])
-        if d.get("date_to"):
-            qs = qs.filter(received_at__date__lte=d["date_to"])
-        if d.get("q"):
-            q = d["q"]
-            qs = qs.filter(
-                Q(file_name__icontains=q)
-                | Q(file_sha256__icontains=q)
-                | Q(signing_id__icontains=q)
-                | Q(team_id__icontains=q)
-                | Q(cdhash__icontains=q)
-                | Q(file_path__icontains=q)
-                | Q(file_bundle_id__icontains=q)
-            )
-        if not d.get("show_covered"):
-            covered = _covered_by_rule_q()
-            if covered:
-                qs = qs.exclude(covered)
+    qs = _apply_event_filters(qs, filter_form, extended_search=True)
 
     sort_param = request.GET.get("sort") or "-count"
     if sort_param not in AGGREGATE_SORTS:
@@ -387,3 +415,61 @@ class UnknownMachineListView(LoginRequiredMixin, ListView):
     context_object_name = "machines"
     paginate_by = 100
     queryset = UnknownMachine.objects.order_by("-last_seen")
+
+
+_CSV_COLUMNS = (
+    "received_at",
+    "audience",
+    "machine_id",
+    "decision",
+    "executing_user",
+    "file_name",
+    "file_path",
+    "file_sha256",
+    "file_bundle_id",
+    "file_bundle_name",
+    "file_bundle_version_string",
+    "signing_id",
+    "team_id",
+    "cdhash",
+    "signing_status",
+    "static_rule",
+    "execution_time",
+    "parent_name",
+    "pid",
+    "ppid",
+)
+
+
+class _Echo:
+    """File-like object that just returns the written value (for csv.writer streaming)."""
+
+    def write(self, value):
+        return value
+
+
+@login_required
+def event_export_csv(request):
+    """Stream filtered events as CSV, respecting EventFilterForm + ordering query params."""
+    qs = Event.objects.all()
+    filter_form = EventFilterForm(request.GET)
+    qs = _apply_event_filters(qs, filter_form)
+
+    sort = "-received_at"
+    if filter_form.is_valid():
+        requested_sort = filter_form.cleaned_data.get("sort") or ""
+        if requested_sort in SORT_KEYS:
+            sort = requested_sort
+    qs = qs.order_by(sort).values_list(*_CSV_COLUMNS).iterator(chunk_size=500)
+
+    writer = csv.writer(_Echo())
+
+    def row_iter():
+        yield writer.writerow(_CSV_COLUMNS)
+        for row in qs:
+            yield writer.writerow(row)
+
+    response = StreamingHttpResponse(row_iter(), content_type="text/csv")
+    filename = f"elf-events-{timezone.now():%Y%m%d-%H%M%S}.csv"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

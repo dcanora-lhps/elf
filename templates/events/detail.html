@@ -6,7 +6,7 @@
 
 <dl class="dl">
   <dt>Received</dt><dd>{{ event.received_at }}</dd>
-  <dt>Machine</dt><dd class="mono">{{ event.machine_id }} <span class="pill {{ event.audience }}">{{ event.audience }}</span></dd>
+  <dt>Machine</dt><dd class="mono">{{ event.machine_id }} <span class="pill {{ event.audience }}">{{ event.get_audience_display }}</span></dd>
   <dt>Decision</dt><dd>{{ event.decision }}</dd>
   <dt>Execution time</dt><dd>{{ event.execution_time|default:"—" }}</dd>
   <dt>Executing user</dt><dd>{{ event.executing_user|default:"—" }}</dd>

@@ -15,26 +15,42 @@
   </form>
 </div>
 
+{% if rules %}
+{% with cs=current_sort %}
 <table>
 <thead>
-<tr><th>Identifier</th><th>Type</th><th>Policy</th><th>Students</th><th>Teachers</th><th>Updated</th><th></th></tr>
+<tr>
+  <th>Identifier</th>
+  <th><a class="sortable" href="?sort={% if cs == 'rule_type' %}-rule_type{% else %}rule_type{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Type{% if cs == 'rule_type' %} ▲{% elif cs == '-rule_type' %} ▼{% endif %}</a></th>
+  <th><a class="sortable" href="?sort={% if cs == 'policy' %}-policy{% else %}policy{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Policy{% if cs == 'policy' %} ▲{% elif cs == '-policy' %} ▼{% endif %}</a></th>
+  <th>MS</th>
+  <th>US</th>
+  <th>Teachers</th>
+  <th><a class="sortable" href="?sort={% if cs == '-updated_at' %}updated_at{% else %}-updated_at{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Updated{% if cs == '-updated_at' %} ▼{% elif cs == 'updated_at' %} ▲{% endif %}</a></th>
+  <th></th>
+</tr>
 </thead>
 <tbody>
 {% for rule in rules %}
 <tr>
-  <td class="mono" title="{{ rule.identifier }}">{{ rule.identifier|truncatechars:60 }}{% if rule.custom_msg %}<br><small style="color:#666">{{ rule.custom_msg|truncatechars:80 }}</small>{% endif %}{% if rule.comment %}<br><small style="color:#888;font-style:italic" title="{{ rule.comment }}">note: {{ rule.comment|truncatechars:90 }}</small>{% endif %}</td>
+  <td>
+    <span class="mono" title="{{ rule.identifier }}">{{ rule.identifier|slice:":12" }}{% if rule.identifier|length > 12 %}…{% endif %}</span>
+    <button type="button" class="copy-btn" data-copy="{{ rule.identifier }}" title="Copy full identifier">copy</button>
+    {% if rule.custom_msg %}<br><small style="color:#666">{{ rule.custom_msg|truncatechars:80 }}</small>{% endif %}
+    {% if rule.comment %}<br><small style="color:#888;font-style:italic" title="{{ rule.comment }}">note: {{ rule.comment|truncatechars:90 }}</small>{% endif %}
+  </td>
   <td>{{ rule.rule_type }}</td>
   <td>{% if rule.policy|slice:":5" == "BLOCK" or rule.policy == "SILENT_BLOCKLIST" %}<span class="pill block">{{ rule.policy }}</span>{% elif rule.policy|slice:":5" == "ALLOW" %}<span class="pill allow">{{ rule.policy }}</span>{% else %}<span class="pill">{{ rule.policy }}</span>{% endif %}</td>
-  <td>{% if rule.applies_to_students %}<span class="pill student">yes</span>{% else %}—{% endif %}</td>
+  <td>{% if rule.applies_to_middle_school %}<span class="pill middle_school">yes</span>{% else %}—{% endif %}</td>
+  <td>{% if rule.applies_to_upper_school %}<span class="pill upper_school">yes</span>{% else %}—{% endif %}</td>
   <td>{% if rule.applies_to_teachers %}<span class="pill teacher">yes</span>{% else %}—{% endif %}</td>
   <td>{{ rule.updated_at|date:"Y-m-d H:i" }}</td>
   <td><a href="{% url 'rule-edit' rule.pk %}">edit</a> · <a href="{% url 'rule-delete' rule.pk %}">delete</a></td>
 </tr>
-{% empty %}
-<tr><td colspan="7"><em>No rules yet.</em></td></tr>
 {% endfor %}
 </tbody>
 </table>
+{% endwith %}
 
 {% if is_paginated %}
 <div class="pagination">
@@ -43,4 +59,26 @@
   {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&{{ querystring }}">next</a>{% endif %}
 </div>
 {% endif %}
+{% else %}
+<div class="empty">
+  <h3>No rules match</h3>
+  <p>{% if querystring %}Try removing filters, or {% endif %}create a rule to start shaping policy for your machines.</p>
+  <a class="btn" href="{% url 'rule-create' %}">+ New rule</a>
+  {% if querystring %}<a class="btn secondary" href="{% url 'rule-list' %}">Clear filters</a>{% endif %}
+</div>
+{% endif %}
+
+<script>
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest(".copy-btn");
+  if (!btn) return;
+  var text = btn.getAttribute("data-copy") || "";
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(function () {
+    var orig = btn.textContent;
+    btn.textContent = "copied";
+    setTimeout(function () { btn.textContent = orig; }, 900);
+  });
+});
+</script>
 {% endblock %}

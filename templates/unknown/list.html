@@ -2,8 +2,9 @@
 {% block title %}Unknown machines — elf{% endblock %}
 {% block content %}
 <h1>Unknown machines</h1>
-<p>Machines that have synced but whose <code>machine_id</code> contains neither <code>EMP</code> nor <code>STU</code>. They are treated as <strong>students</strong> by default (and receive the student ruleset / mobileconfig). This list is purely for admin triage — add notes if you want to remember who they belong to.</p>
+<p>Machines that have synced but whose <code>machine_id</code> contains no <code>EMP</code> and starts with neither <code>MS-</code> nor <code>US-</code>. They are treated as <strong>upper school</strong> by default (and receive the upper-school ruleset). This list is purely for admin triage — add notes if you want to remember who they belong to.</p>
 
+{% if machines %}
 <table>
 <thead><tr><th>Machine ID</th><th>Hits</th><th>First seen</th><th>Last seen</th><th>Notes</th><th></th></tr></thead>
 <tbody>
@@ -16,9 +17,13 @@
   <td>{{ m.notes|truncatechars:80 }}</td>
   <td><a href="/admin/app/unknownmachine/{{ m.pk }}/change/">edit</a></td>
 </tr>
-{% empty %}
-<tr><td colspan="6"><em>No unknown machines.</em></td></tr>
 {% endfor %}
 </tbody>
 </table>
+{% else %}
+<div class="empty">
+  <h3>No unknown machines</h3>
+  <p>Every machine that has synced uses a recognized <code>EMP</code>, <code>MS-</code>, or <code>US-</code> identifier.</p>
+</div>
+{% endif %}
 {% endblock %}

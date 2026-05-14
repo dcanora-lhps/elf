@@ -2,7 +2,10 @@
 {% block title %}Events — elf{% endblock %}
 {% block content %}
 <h1>Events</h1>
-<p><a class="btn secondary" href="{% url 'event-aggregate' %}{% if querystring %}?{{ querystring }}{% endif %}">View by app →</a></p>
+<p>
+  <a class="btn secondary" href="{% url 'event-aggregate' %}{% if querystring %}?{{ querystring }}{% endif %}">View by app →</a>
+  <a class="btn secondary" href="{% url 'event-export-csv' %}{% if querystring %}?{{ querystring }}{% endif %}">Download CSV</a>
+</p>
 
 <div class="filters">
   <form method="get">
@@ -20,6 +23,7 @@
   </form>
 </div>
 
+{% if events %}
 <table>
 <thead>
 <tr>
@@ -30,7 +34,7 @@
 {% for e in events %}
 <tr>
   <td><a href="{% url 'event-detail' e.pk %}">{{ e.received_at|date:"Y-m-d H:i:s" }}</a></td>
-  <td><span class="pill {{ e.audience }}">{{ e.audience }}</span></td>
+  <td><span class="pill {{ e.audience }}">{{ e.get_audience_display }}</span></td>
   <td class="mono">{{ e.machine_id|truncatechars:32 }}</td>
   <td>{% if e.decision|slice:":5" == "BLOCK" %}<span class="pill block">{{ e.decision }}</span>{% elif e.decision|slice:":5" == "ALLOW" %}<span class="pill allow">{{ e.decision }}</span>{% else %}<span class="pill">{{ e.decision }}</span>{% endif %}</td>
   <td>{{ e.file_name|default:"—" }}{% if e.file_bundle_name %}<br><small style="color:#666">{{ e.file_bundle_name }}</small>{% endif %}</td>
@@ -38,8 +42,6 @@
   <td class="mono">{% if e.team_id %}{{ e.team_id }} <a href="{% url 'rule-create' %}?rule_type=TEAMID&amp;identifier={{ e.team_id|urlencode }}" title="Make a rule for this Team ID" style="font-size:11px">+ rule</a>{% else %}—{% endif %}</td>
   <td>{{ e.executing_user|default:"—" }}</td>
 </tr>
-{% empty %}
-<tr><td colspan="8"><em>No events match.</em></td></tr>
 {% endfor %}
 </tbody>
 </table>
@@ -49,6 +51,13 @@
   {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&{{ querystring }}">previous</a>{% endif %}
   <span>page {{ page_obj.number }} of {{ paginator.num_pages }} · {{ paginator.count }} events</span>
   {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&{{ querystring }}">next</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty">
+  <h3>No events match</h3>
+  <p>{% if querystring %}Try clearing some filters, or toggle "show events covered by a rule" to widen the view.{% else %}Once machines sync and upload events, they will appear here.{% endif %}</p>
+  {% if querystring %}<a class="btn secondary" href="{% url 'event-list' %}">Clear filters</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

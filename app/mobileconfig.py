@@ -16,7 +16,8 @@ from .models import Audience, Policy, ServerSettings
 SANTA_PAYLOAD_TYPE = "com.northpolesec.santa"
 
 AUDIENCE_LABELS = {
-    Audience.STUDENT: "Students",
+    Audience.MIDDLE_SCHOOL: "Middle School",
+    Audience.UPPER_SCHOOL: "Upper School",
     Audience.TEACHER: "Teachers",
 }
 
@@ -53,7 +54,7 @@ def _static_rules_for(audience):
 def build_mobileconfig(audience):
     """Return (xml_bytes, stats_dict) for the given audience.
 
-    audience: Audience.STUDENT or Audience.TEACHER.
+    audience: one of Audience.MIDDLE_SCHOOL, Audience.UPPER_SCHOOL, Audience.TEACHER.
     """
     if audience not in AUDIENCE_LABELS:
         raise ValueError(f"unsupported audience: {audience}")
