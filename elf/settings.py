@@ -112,7 +112,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+# Display timezone — storage stays UTC because USE_TZ=True. Override with DJANGO_TIME_ZONE
+# if a different default is needed.
+TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "America/New_York")
 USE_I18N = True
 USE_TZ = True
 

@@ -291,6 +291,16 @@ class SyncSession(models.Model):
     client_rules_hash = models.CharField(max_length=128, blank=True, default="")
     final_rules_hash = models.CharField(max_length=128, blank=True, default="")
     consumed_clean_flag = models.BooleanField(default=False)
+    # Identity reported by the Santa client in preflight. machine_owner is the
+    # configured Configuration Profile owner; primary_user is the logged-in user.
+    machine_owner = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    primary_user = models.CharField(max_length=255, blank=True, default="")
+    hostname = models.CharField(max_length=255, blank=True, default="")
+    serial_num = models.CharField(max_length=128, blank=True, default="")
+    os_version = models.CharField(max_length=64, blank=True, default="")
+    os_build = models.CharField(max_length=64, blank=True, default="")
+    model_identifier = models.CharField(max_length=128, blank=True, default="")
+    santa_version = models.CharField(max_length=64, blank=True, default="")
 
     class Meta:
         ordering = ["-started_at"]

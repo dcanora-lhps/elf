@@ -72,6 +72,14 @@ def preflight(request, body, machine_id):
         batch_size=settings.SANTA_DEFAULT_BATCH_SIZE,
         client_rules_hash=str(body.get("rules_hash") or ""),
         consumed_clean_flag=bool(flag),
+        machine_owner=str(body.get("machine_owner") or "")[:255],
+        primary_user=str(body.get("primary_user") or "")[:255],
+        hostname=str(body.get("hostname") or "")[:255],
+        serial_num=str(body.get("serial_num") or "")[:128],
+        os_version=str(body.get("os_version") or "")[:64],
+        os_build=str(body.get("os_build") or "")[:64],
+        model_identifier=str(body.get("model_identifier") or "")[:128],
+        santa_version=str(body.get("santa_version") or "")[:64],
     )
 
     response = {

@@ -6,7 +6,7 @@
 
 <div class="filters">
   <form method="get">
-    <div><label>Search machine ID</label><input type="text" name="q" value="{{ q }}"></div>
+    <div><label>Search owner / user / host / serial / id</label><input type="text" name="q" value="{{ q }}"></div>
     <div><label>Audience</label>
       <select name="audience">
         <option value="">all</option>
@@ -32,10 +32,11 @@
 <table>
 <thead>
 <tr>
-  <th><a class="sortable" href="?sort={% if current_sort == 'machine_id' %}-{% endif %}machine_id{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Machine ID</a></th>
+  <th>Owner</th>
+  <th>Host / Machine ID</th>
   <th>Audience</th>
-  <th>Last sync</th>
-  <th>Mode</th>
+  <th>OS</th>
+  <th>Santa</th>
   <th><a class="sortable" href="?sort={% if current_sort == '-last_seen' %}last_seen{% else %}-last_seen{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Last seen</a></th>
   <th><a class="sortable" href="?sort={% if current_sort == '-first_seen' %}first_seen{% else %}-first_seen{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">First seen</a></th>
   <th><a class="sortable" href="?sort={% if current_sort == '-sync_count' %}sync_count{% else %}-sync_count{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Syncs</a></th>
@@ -44,10 +45,21 @@
 <tbody>
 {% for r in rows %}
 <tr>
-  <td class="mono"><a href="{% url 'machine-detail' r.machine_id %}">{{ r.machine_id }}</a></td>
+  <td>
+    <a href="{% url 'machine-detail' r.machine_id %}">
+      <strong>{{ r.last.machine_owner|default:r.last.primary_user|default:"—" }}</strong>
+    </a>
+    {% if r.last.machine_owner and r.last.primary_user and r.last.primary_user != r.last.machine_owner %}
+      <br><small style="color:#666">user: {{ r.last.primary_user }}</small>
+    {% endif %}
+  </td>
+  <td>
+    {% if r.last.hostname %}{{ r.last.hostname }}<br>{% endif %}
+    <small class="mono" style="color:#666">{{ r.machine_id|truncatechars:40 }}</small>
+  </td>
   <td>{% if r.last %}<span class="pill {{ r.last.audience }}">{{ r.last.get_audience_display }}</span>{% else %}—{% endif %}</td>
-  <td>{% if r.last %}{{ r.last.sync_type }}{% else %}—{% endif %}</td>
-  <td>{% if r.last %}{{ r.last.client_mode }}{% else %}—{% endif %}</td>
+  <td>{{ r.last.os_version|default:"—" }}</td>
+  <td>{{ r.last.santa_version|default:"—" }}</td>
   <td>{{ r.last_seen|date:"Y-m-d H:i:s" }}</td>
   <td>{{ r.first_seen|date:"Y-m-d H:i" }}</td>
   <td>{{ r.sync_count }}</td>

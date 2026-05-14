@@ -443,7 +443,13 @@ def machine_list(request):
 
     q = (request.GET.get("q") or "").strip()
     if q:
-        qs = qs.filter(machine_id__icontains=q)
+        qs = qs.filter(
+            Q(machine_id__icontains=q)
+            | Q(machine_owner__icontains=q)
+            | Q(primary_user__icontains=q)
+            | Q(hostname__icontains=q)
+            | Q(serial_num__icontains=q)
+        )
 
     audience = (request.GET.get("audience") or "").strip()
     if audience in {c.value for c in Audience}:
@@ -468,16 +474,19 @@ def machine_list(request):
         .order_by(*MACHINE_LIST_SORTS[sort])
     )
 
-    last_per_machine = {}
-    for s in (
-        SyncSession.objects.filter(machine_id__in=[r["machine_id"] for r in aggregated[:200]])
-        .order_by("machine_id", "-started_at")
-        .only("machine_id", "audience", "sync_type", "client_mode", "started_at", "completed_at")
-    ):
-        last_per_machine.setdefault(s.machine_id, s)
-
     paginator = Paginator(aggregated, 100)
     page_obj = paginator.get_page(request.GET.get("page"))
+
+    last_per_machine = {}
+    for s in (
+        SyncSession.objects.filter(machine_id__in=[r["machine_id"] for r in page_obj.object_list])
+        .order_by("machine_id", "-started_at")
+        .only(
+            "machine_id", "audience", "sync_type", "client_mode", "started_at", "completed_at",
+            "machine_owner", "primary_user", "hostname", "serial_num", "os_version", "santa_version",
+        )
+    ):
+        last_per_machine.setdefault(s.machine_id, s)
 
     rows = []
     for r in page_obj.object_list:
