@@ -26,6 +26,16 @@ AUDIENCE_LABELS = {
 #           can't be "removed" because it's part of the profile itself.
 EXCLUDED_POLICIES = {Policy.REMOVE}
 
+# (ServerSettings field name, profile plist key). Per Santa profile schema.
+_DIALOG_PROFILE_KEYS = (
+    ("event_detail_url", "EventDetailURL"),
+    ("event_detail_text", "EventDetailText"),
+    ("unknown_block_message", "UnknownBlockMessage"),
+    ("banned_block_message", "BannedBlockMessage"),
+    ("mode_notification_monitor", "ModeNotificationMonitor"),
+    ("mode_notification_lockdown", "ModeNotificationLockdown"),
+)
+
 
 def _static_rules_for(audience):
     rules = []
@@ -77,6 +87,10 @@ def build_mobileconfig(audience):
     }
     if settings.allowed_path_regex:
         santa_payload["AllowedPathRegex"] = settings.allowed_path_regex
+    for src, dst in _DIALOG_PROFILE_KEYS:
+        v = getattr(settings, src) or ""
+        if v:
+            santa_payload[dst] = v
 
     profile = {
         "PayloadType": "Configuration",

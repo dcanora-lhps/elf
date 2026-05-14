@@ -365,6 +365,51 @@ class ServerSettings(models.Model):
             "Note: anything writable into these paths effectively bypasses Santa, so keep it tight."
         ),
     )
+    # Block-dialog customization. Pushed via preflight (sync) and embedded in mobileconfig.
+    # Per-rule custom_msg/custom_url still wins when set on a matching Rule.
+    event_detail_url = models.CharField(
+        max_length=1024,
+        blank=True,
+        default="",
+        help_text=(
+            'URL template for the "Open Event" button in the block dialog. Supports Santa '
+            "placeholders: <code>%machine_id%</code>, <code>%username%</code>, "
+            "<code>%file_identifier%</code>, <code>%file_bundle_id%</code>, "
+            "<code>%signing_id%</code>, <code>%team_id%</code>. Leave blank to hide the button."
+        ),
+    )
+    event_detail_text = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text='Label for the "Open Event" button. Defaults to Santa\'s built-in text when blank.',
+    )
+    unknown_block_message = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Shown when an unsigned/unknown binary is blocked because no rule covers it "
+            "(LOCKDOWN mode). Supports basic HTML."
+        ),
+    )
+    banned_block_message = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Shown when a binary is blocked because a BLOCKLIST rule matches it. Per-rule "
+            "<em>Block dialog → Custom message</em> on the matching Rule overrides this."
+        ),
+    )
+    mode_notification_monitor = models.TextField(
+        blank=True,
+        default="",
+        help_text="Notification banner shown when the client transitions into MONITOR mode.",
+    )
+    mode_notification_lockdown = models.TextField(
+        blank=True,
+        default="",
+        help_text="Notification banner shown when the client transitions into LOCKDOWN mode.",
+    )
 
     class Meta:
         verbose_name = "Server settings"

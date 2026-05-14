@@ -107,7 +107,22 @@ def preflight(request, body, machine_id):
     }
     if server_settings.allowed_path_regex:
         response["allowed_path_regex"] = server_settings.allowed_path_regex
+    for src, dst in _DIALOG_PREFLIGHT_KEYS:
+        v = getattr(server_settings, src) or ""
+        if v:
+            response[dst] = v
     return JsonResponse(response)
+
+
+# (ServerSettings field name, preflight JSON key). Per santa.dev configuration keys.
+_DIALOG_PREFLIGHT_KEYS = (
+    ("event_detail_url", "event_detail_url"),
+    ("event_detail_text", "event_detail_text"),
+    ("unknown_block_message", "unknown_block_message"),
+    ("banned_block_message", "banned_block_message"),
+    ("mode_notification_monitor", "mode_notification_monitor"),
+    ("mode_notification_lockdown", "mode_notification_lockdown"),
+)
 
 
 _EVENT_DIRECT_FIELDS = (

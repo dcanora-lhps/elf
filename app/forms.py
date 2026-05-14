@@ -13,10 +13,43 @@ class ServerSettingsForm(forms.ModelForm):
             "organization",
             "payload_identifier_prefix",
             "allowed_path_regex",
+            "event_detail_url",
+            "event_detail_text",
+            "unknown_block_message",
+            "banned_block_message",
+            "mode_notification_monitor",
+            "mode_notification_lockdown",
         ]
         widgets = {
             "allowed_path_regex": forms.TextInput(attrs={"size": 60}),
+            "event_detail_url": forms.TextInput(attrs={"size": 60}),
+            "event_detail_text": forms.TextInput(attrs={"size": 40}),
+            "unknown_block_message": forms.Textarea(attrs={"rows": 3, "cols": 60}),
+            "banned_block_message": forms.Textarea(attrs={"rows": 3, "cols": 60}),
+            "mode_notification_monitor": forms.Textarea(attrs={"rows": 2, "cols": 60}),
+            "mode_notification_lockdown": forms.Textarea(attrs={"rows": 2, "cols": 60}),
         }
+
+    # Section grouping for the settings template.
+    SECTIONS = (
+        ("Sync", ("default_client_mode", "monitor_only", "allowed_path_regex")),
+        ("Profile (mobileconfig)", ("mobileconfig_client_mode", "organization", "payload_identifier_prefix")),
+        (
+            "Block dialog defaults",
+            (
+                "event_detail_url",
+                "event_detail_text",
+                "unknown_block_message",
+                "banned_block_message",
+                "mode_notification_monitor",
+                "mode_notification_lockdown",
+            ),
+        ),
+    )
+
+    def sectioned_fields(self):
+        for title, names in self.SECTIONS:
+            yield title, [self[name] for name in names]
 
 
 class MachinePolicyForm(forms.ModelForm):

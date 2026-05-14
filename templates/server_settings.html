@@ -9,20 +9,25 @@
 </div>
 {% else %}
 <div class="banner info">
-  Monitor-only mode is <strong>OFF</strong>. Rules are pushed to clients via sync as normal.
+  Default client mode: <strong>{{ settings.default_client_mode }}</strong>. Per-machine overrides apply on the machine detail page.
 </div>
 {% endif %}
 
-<form method="post" style="max-width: 720px;">{% csrf_token %}
+<form method="post" style="max-width: 760px;">{% csrf_token %}
 {{ form.non_field_errors }}
-<table>
-{% for field in form %}
-<tr>
-  <th style="width: 260px;"><label for="{{ field.id_for_label }}">{{ field.label }}</label></th>
-  <td>{{ field }}{% if field.help_text %}<div style="color:#666;font-size:12px;max-width:440px">{{ field.help_text }}</div>{% endif %}{{ field.errors }}</td>
-</tr>
+{% for section_title, fields in form.sectioned_fields %}
+<div class="form-section">
+  <h3>{{ section_title }}</h3>
+  <table>
+    {% for field in fields %}
+    <tr>
+      <th style="width: 260px;"><label for="{{ field.id_for_label }}">{{ field.label }}</label></th>
+      <td>{{ field }}{% if field.help_text %}<div style="color:#666;font-size:12px;max-width:460px">{{ field.help_text|safe }}</div>{% endif %}{{ field.errors }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
 {% endfor %}
-</table>
 <p>
   <button class="btn" type="submit">Save</button>
   <a class="btn secondary" href="{% url 'dashboard' %}">Back</a>
