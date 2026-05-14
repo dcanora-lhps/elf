@@ -417,6 +417,130 @@ class UnknownMachineListView(LoginRequiredMixin, ListView):
     queryset = UnknownMachine.objects.order_by("-last_seen")
 
 
+MACHINE_LIST_SORTS = {
+    "-last_seen": ("-last_seen",),
+    "last_seen": ("last_seen",),
+    "-first_seen": ("-first_seen",),
+    "first_seen": ("first_seen",),
+    "-sync_count": ("-sync_count", "-last_seen"),
+    "sync_count": ("sync_count", "-last_seen"),
+    "machine_id": ("machine_id",),
+    "-machine_id": ("-machine_id",),
+}
+
+_ACTIVE_WINDOWS = {
+    "1h": timedelta(hours=1),
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+}
+
+
+@login_required
+def machine_list(request):
+    """Aggregate SyncSession rows by machine_id to show a roster of machines and last check-in."""
+    qs = SyncSession.objects.all()
+
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        qs = qs.filter(machine_id__icontains=q)
+
+    audience = (request.GET.get("audience") or "").strip()
+    if audience in {c.value for c in Audience}:
+        qs = qs.filter(audience=audience)
+
+    active = (request.GET.get("active") or "").strip()
+    if active in _ACTIVE_WINDOWS:
+        qs = qs.filter(started_at__gte=timezone.now() - _ACTIVE_WINDOWS[active])
+
+    sort = request.GET.get("sort") or "-last_seen"
+    if sort not in MACHINE_LIST_SORTS:
+        sort = "-last_seen"
+
+    aggregated = (
+        qs.values("machine_id")
+        .annotate(
+            sync_count=Count("id"),
+            last_seen=Max("started_at"),
+            first_seen=Min("started_at"),
+            last_completed=Max("completed_at"),
+        )
+        .order_by(*MACHINE_LIST_SORTS[sort])
+    )
+
+    last_per_machine = {}
+    for s in (
+        SyncSession.objects.filter(machine_id__in=[r["machine_id"] for r in aggregated[:200]])
+        .order_by("machine_id", "-started_at")
+        .only("machine_id", "audience", "sync_type", "client_mode", "started_at", "completed_at")
+    ):
+        last_per_machine.setdefault(s.machine_id, s)
+
+    paginator = Paginator(aggregated, 100)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    rows = []
+    for r in page_obj.object_list:
+        last = last_per_machine.get(r["machine_id"])
+        rows.append({**r, "last": last})
+
+    filters_only = request.GET.copy()
+    filters_only.pop("sort", None)
+    filters_only.pop("page", None)
+
+    return render(
+        request,
+        "machines/list.html",
+        {
+            "rows": rows,
+            "page_obj": page_obj,
+            "paginator": paginator,
+            "is_paginated": paginator.num_pages > 1,
+            "querystring": request.GET.urlencode(),
+            "filters_querystring": filters_only.urlencode(),
+            "current_sort": sort,
+            "q": q,
+            "selected_audience": audience,
+            "selected_active": active,
+            "audience_choices": Audience.choices,
+            "active_choices": [("1h", "Last hour"), ("24h", "Last 24h"), ("7d", "Last 7 days"), ("30d", "Last 30 days")],
+            "total_machines": paginator.count,
+        },
+    )
+
+
+@login_required
+def machine_detail(request, machine_id):
+    """Recent sync history for a single machine."""
+    sessions = list(
+        SyncSession.objects.filter(machine_id=machine_id).order_by("-started_at")[:50]
+    )
+    if not sessions:
+        return render(
+            request, "machines/detail.html", {"machine_id": machine_id, "sessions": [], "summary": None}
+        )
+    agg = SyncSession.objects.filter(machine_id=machine_id).aggregate(
+        sync_count=Count("id"),
+        first_seen=Min("started_at"),
+        last_seen=Max("started_at"),
+        last_completed=Max("completed_at"),
+    )
+    recent_events = list(
+        Event.objects.filter(machine_id=machine_id).order_by("-received_at")[:25]
+    )
+    return render(
+        request,
+        "machines/detail.html",
+        {
+            "machine_id": machine_id,
+            "sessions": sessions,
+            "summary": agg,
+            "current": sessions[0],
+            "recent_events": recent_events,
+        },
+    )
+
+
 _CSV_COLUMNS = (
     "received_at",
     "audience",

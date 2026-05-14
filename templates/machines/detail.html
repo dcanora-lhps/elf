@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ machine_id }} — elf{% endblock %}
+{% block content %}
+<p><a href="{% url 'machine-list' %}">← all machines</a></p>
+<h1 class="mono" style="word-break:break-all;">{{ machine_id }}</h1>
+
+{% if summary %}
+<div class="stat-grid" style="margin-bottom:18px;">
+  <div class="stat"><div class="n">{{ summary.sync_count }}</div><div class="l">syncs recorded</div></div>
+  <div class="stat"><div class="n">{{ summary.last_seen|date:"Y-m-d H:i" }}</div><div class="l">last seen</div></div>
+  <div class="stat"><div class="n">{{ summary.first_seen|date:"Y-m-d H:i" }}</div><div class="l">first seen</div></div>
+  <div class="stat"><div class="n">{% if current %}<span class="pill {{ current.audience }}">{{ current.get_audience_display }}</span>{% else %}—{% endif %}</div><div class="l">current audience</div></div>
+</div>
+{% endif %}
+
+<h2>Recent syncs</h2>
+{% if sessions %}
+<table>
+<thead>
+<tr><th>Started</th><th>Completed</th><th>Audience</th><th>Sync type</th><th>Mode</th><th>Rules sent</th><th>Events received</th></tr>
+</thead>
+<tbody>
+{% for s in sessions %}
+<tr>
+  <td>{{ s.started_at|date:"Y-m-d H:i:s" }}</td>
+  <td>{% if s.completed_at %}{{ s.completed_at|date:"Y-m-d H:i:s" }}{% else %}<span class="pill unknown">in flight</span>{% endif %}</td>
+  <td><span class="pill {{ s.audience }}">{{ s.get_audience_display }}</span></td>
+  <td>{{ s.sync_type }}{% if s.postflight_sync_type and s.postflight_sync_type != s.sync_type %} → {{ s.postflight_sync_type }}{% endif %}</td>
+  <td>{{ s.client_mode }}</td>
+  <td>{{ s.rules_sent }}</td>
+  <td>{{ s.rules_received }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% else %}
+<div class="empty"><h3>No sync history</h3><p>This machine has not preflighted.</p></div>
+{% endif %}
+
+{% if recent_events %}
+<h2 style="margin-top:24px;">Recent events</h2>
+<table>
+<thead><tr><th>Received</th><th>Decision</th><th>File</th><th>Signing ID</th><th>Team ID</th></tr></thead>
+<tbody>
+{% for e in recent_events %}
+<tr>
+  <td><a href="{% url 'event-detail' e.pk %}">{{ e.received_at|date:"Y-m-d H:i:s" }}</a></td>
+  <td>{% if e.decision|slice:":5" == "BLOCK" %}<span class="pill block">{{ e.decision }}</span>{% elif e.decision|slice:":5" == "ALLOW" %}<span class="pill allow">{{ e.decision }}</span>{% else %}<span class="pill">{{ e.decision }}</span>{% endif %}</td>
+  <td>{{ e.file_name|default:"—" }}</td>
+  <td class="mono">{{ e.signing_id|default:"—"|truncatechars:36 }}</td>
+  <td class="mono">{{ e.team_id|default:"—" }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+{% endblock %}

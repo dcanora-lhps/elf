@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Machines — elf{% endblock %}
+{% block content %}
+<h1>Machines</h1>
+<p>Roster of machines that have synced, derived from <code>SyncSession</code> rows. Last seen is the most recent preflight time.</p>
+
+<div class="filters">
+  <form method="get">
+    <div><label>Search machine ID</label><input type="text" name="q" value="{{ q }}"></div>
+    <div><label>Audience</label>
+      <select name="audience">
+        <option value="">all</option>
+        {% for v, label in audience_choices %}
+          <option value="{{ v }}" {% if selected_audience == v %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><label>Active in</label>
+      <select name="active">
+        <option value="">any time</option>
+        {% for v, label in active_choices %}
+          <option value="{{ v }}" {% if selected_active == v %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn secondary" href="{% url 'machine-list' %}">Reset</a>
+  </form>
+</div>
+
+{% if rows %}
+<table>
+<thead>
+<tr>
+  <th><a class="sortable" href="?sort={% if current_sort == 'machine_id' %}-{% endif %}machine_id{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Machine ID</a></th>
+  <th>Audience</th>
+  <th>Last sync</th>
+  <th>Mode</th>
+  <th><a class="sortable" href="?sort={% if current_sort == '-last_seen' %}last_seen{% else %}-last_seen{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Last seen</a></th>
+  <th><a class="sortable" href="?sort={% if current_sort == '-first_seen' %}first_seen{% else %}-first_seen{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">First seen</a></th>
+  <th><a class="sortable" href="?sort={% if current_sort == '-sync_count' %}sync_count{% else %}-sync_count{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Syncs</a></th>
+</tr>
+</thead>
+<tbody>
+{% for r in rows %}
+<tr>
+  <td class="mono"><a href="{% url 'machine-detail' r.machine_id %}">{{ r.machine_id }}</a></td>
+  <td>{% if r.last %}<span class="pill {{ r.last.audience }}">{{ r.last.get_audience_display }}</span>{% else %}—{% endif %}</td>
+  <td>{% if r.last %}{{ r.last.sync_type }}{% else %}—{% endif %}</td>
+  <td>{% if r.last %}{{ r.last.client_mode }}{% else %}—{% endif %}</td>
+  <td>{{ r.last_seen|date:"Y-m-d H:i:s" }}</td>
+  <td>{{ r.first_seen|date:"Y-m-d H:i" }}</td>
+  <td>{{ r.sync_count }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% if is_paginated %}
+<div class="pagination">
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&{{ querystring }}">previous</a>{% endif %}
+  <span>page {{ page_obj.number }} of {{ paginator.num_pages }} · {{ total_machines }} machines</span>
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&{{ querystring }}">next</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty">
+  <h3>No machines match</h3>
+  <p>{% if querystring %}Try clearing some filters.{% else %}Machines will appear here once they preflight.{% endif %}</p>
+  {% if querystring %}<a class="btn secondary" href="{% url 'machine-list' %}">Clear filters</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
