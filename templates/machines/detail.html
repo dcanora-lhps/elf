@@ -30,6 +30,39 @@
 {% endif %}
 
 <div class="form-section">
+  <h3>Clean sync</h3>
+  <div style="padding: 12px;">
+    {% if pending_clean %}
+      <p style="margin-top:0;">
+        <span class="pill unknown">{{ pending_clean.requested_sync_type }}</span> queued
+        {% if pending_clean.set_by %}by <strong>{{ pending_clean.set_by }}</strong>{% endif %}
+        on {{ pending_clean.set_at|date:"Y-m-d H:i" }}.
+        {% if pending_clean.reason %}<br><small style="color:#666">{{ pending_clean.reason }}</small>{% endif %}
+      </p>
+      <form method="post" action="{% url 'machine-clean-sync' machine_id %}">{% csrf_token %}
+        <input type="hidden" name="action" value="cancel">
+        <button class="btn danger" type="submit">Cancel pending clean sync</button>
+      </form>
+    {% else %}
+      <p style="margin-top:0;">No clean sync queued. Queue one to force the client to drop synced state and re-fetch on next preflight.</p>
+      <form method="post" action="{% url 'machine-clean-sync' machine_id %}" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">{% csrf_token %}
+        <div><label style="display:block; font-size:12px; color:#555;">Type</label>
+          <select name="sync_type">
+            {% for v, label in clean_sync_choices %}
+              <option value="{{ v }}" {% if v == 'CLEAN_ALL' %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="flex:1; min-width:240px;"><label style="display:block; font-size:12px; color:#555;">Reason (optional)</label>
+          <input type="text" name="reason" placeholder="e.g. troubleshooting stale rules" style="width:100%;">
+        </div>
+        <button class="btn" type="submit">Queue clean sync</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="form-section">
   <h3>Client mode</h3>
   <div style="padding: 12px;">
     <p style="margin-top:0;">Effective at next preflight: <strong>{{ effective_mode }}</strong></p>

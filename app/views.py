@@ -25,13 +25,16 @@ from .forms import (
     ServerSettingsForm,
 )
 from .models import (
+    CLEAN_SYNC_TYPES,
     Audience,
     AuxiliaryEvent,
+    CleanSyncFlag,
     Event,
     MachinePolicy,
     Rule,
     RuleType,
     ServerSettings,
+    SyncType,
     SyncSession,
     UnknownMachine,
 )
@@ -432,6 +435,8 @@ _ACTIVE_WINDOWS = {
     "30d": timedelta(days=30),
 }
 
+_CLEAN_SYNC_VALUES = {s.value for s in CLEAN_SYNC_TYPES}
+
 
 @login_required
 def machine_list(request):
@@ -485,10 +490,16 @@ def machine_list(request):
     ):
         last_per_machine.setdefault(s.machine_id, s)
 
+    pending_per_machine = dict(
+        CleanSyncFlag.objects.filter(
+            machine_id__in=[r["machine_id"] for r in page_obj.object_list]
+        ).values_list("machine_id", "requested_sync_type")
+    )
+
     rows = []
     for r in page_obj.object_list:
         last = last_per_machine.get(r["machine_id"])
-        rows.append({**r, "last": last})
+        rows.append({**r, "last": last, "pending_clean": pending_per_machine.get(r["machine_id"])})
 
     filters_only = request.GET.copy()
     filters_only.pop("sort", None)
@@ -511,6 +522,8 @@ def machine_list(request):
             "audience_choices": Audience.choices,
             "active_choices": [("1h", "Last hour"), ("24h", "Last 24h"), ("7d", "Last 7 days"), ("30d", "Last 30 days")],
             "total_machines": paginator.count,
+            "clean_sync_choices": [(t.value, t.label) for t in SyncType if t.value in _CLEAN_SYNC_VALUES],
+            "pending_clean_total": CleanSyncFlag.objects.count(),
         },
     )
 
@@ -561,6 +574,8 @@ def machine_detail(request, machine_id):
     else:
         effective_mode = f"{server_settings.default_client_mode} (global default)"
 
+    pending_clean = CleanSyncFlag.objects.filter(machine_id=machine_id).first()
+
     return render(
         request,
         "machines/detail.html",
@@ -574,8 +589,60 @@ def machine_detail(request, machine_id):
             "policy_form": form,
             "effective_mode": effective_mode,
             "server_settings": server_settings,
+            "pending_clean": pending_clean,
+            "clean_sync_choices": [(t.value, t.label) for t in SyncType if t.value in {s.value for s in CLEAN_SYNC_TYPES}],
         },
     )
+
+
+@login_required
+@require_POST
+def machine_clean_sync(request, machine_id):
+    """Queue or cancel a CleanSyncFlag for one machine."""
+    if request.POST.get("action") == "cancel":
+        deleted, _ = CleanSyncFlag.objects.filter(machine_id=machine_id).delete()
+        if deleted:
+            messages.success(request, "Pending clean sync cancelled.")
+        return redirect("machine-detail", machine_id=machine_id)
+
+    sync_type = request.POST.get("sync_type") or SyncType.CLEAN_ALL.value
+    if sync_type not in _CLEAN_SYNC_VALUES:
+        sync_type = SyncType.CLEAN_ALL.value
+    reason = (request.POST.get("reason") or "")[:255]
+
+    CleanSyncFlag.objects.update_or_create(
+        machine_id=machine_id,
+        defaults={
+            "requested_sync_type": sync_type,
+            "reason": reason,
+            "set_by": request.user if request.user.is_authenticated else None,
+        },
+    )
+    messages.success(request, f"Clean sync ({sync_type}) queued. Applied on next preflight.")
+    return redirect("machine-detail", machine_id=machine_id)
+
+
+@login_required
+@require_POST
+def machines_clean_sync_all(request):
+    """Queue a CleanSyncFlag for every machine that has ever synced."""
+    sync_type = request.POST.get("sync_type") or SyncType.CLEAN_ALL.value
+    if sync_type not in _CLEAN_SYNC_VALUES:
+        sync_type = SyncType.CLEAN_ALL.value
+    reason = (request.POST.get("reason") or "")[:255] or "fleet-wide clean sync"
+
+    machine_ids = list(SyncSession.objects.values_list("machine_id", flat=True).distinct())
+    user = request.user if request.user.is_authenticated else None
+
+    count = 0
+    for mid in machine_ids:
+        CleanSyncFlag.objects.update_or_create(
+            machine_id=mid,
+            defaults={"requested_sync_type": sync_type, "reason": reason, "set_by": user},
+        )
+        count += 1
+    messages.success(request, f"Clean sync ({sync_type}) queued for {count} machine(s).")
+    return redirect("machine-list")
 
 
 _CSV_COLUMNS = (

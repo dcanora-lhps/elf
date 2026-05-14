@@ -4,6 +4,28 @@
 <h1>Machines</h1>
 <p>Roster of machines that have synced, derived from <code>SyncSession</code> rows. Last seen is the most recent preflight time.</p>
 
+<details style="margin-bottom: 14px;">
+  <summary style="cursor:pointer; user-select:none;">Trigger clean sync for all machines
+    {% if pending_clean_total %}<span class="pill unknown" style="margin-left:6px;">{{ pending_clean_total }} pending</span>{% endif %}
+  </summary>
+  <form method="post" action="{% url 'machines-clean-sync-all' %}"
+        onsubmit="return confirm('Queue a clean sync for every machine that has ever synced? It applies on each machine\'s next preflight.');"
+        style="display:flex; gap:8px; align-items:end; flex-wrap:wrap; padding:12px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin-top:8px;">
+    {% csrf_token %}
+    <div><label style="display:block; font-size:12px; color:#555;">Type</label>
+      <select name="sync_type">
+        {% for v, label in clean_sync_choices %}
+          <option value="{{ v }}" {% if v == 'CLEAN_ALL' %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:1; min-width:240px;"><label style="display:block; font-size:12px; color:#555;">Reason (optional)</label>
+      <input type="text" name="reason" placeholder="e.g. ruleset reset after policy change" style="width:100%;">
+    </div>
+    <button class="btn danger" type="submit">Queue clean sync for all</button>
+  </form>
+</details>
+
 <div class="filters">
   <form method="get">
     <div><label>Search owner / user / host / serial / id</label><input type="text" name="q" value="{{ q }}"></div>
@@ -49,6 +71,7 @@
     <a href="{% url 'machine-detail' r.machine_id %}">
       <strong>{{ r.last.machine_owner|default:r.last.primary_user|default:"—" }}</strong>
     </a>
+    {% if r.pending_clean %}<span class="pill unknown" title="Clean sync queued">{{ r.pending_clean }}</span>{% endif %}
     {% if r.last.machine_owner and r.last.primary_user and r.last.primary_user != r.last.machine_owner %}
       <br><small style="color:#666">user: {{ r.last.primary_user }}</small>
     {% endif %}
