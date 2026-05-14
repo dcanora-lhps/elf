@@ -16,6 +16,7 @@ from .models import (
     CleanSyncFlag,
     ClientMode,
     Event,
+    MachinePolicy,
     ServerSettings,
     SyncSession,
     SyncType,
@@ -41,6 +42,22 @@ def _track_unknown(machine_id):
     )
 
 
+def _resolve_client_mode(machine_id, server_settings):
+    """Decide which client_mode to push to a client at preflight.
+
+    Precedence: monitor_only (emergency switch) > MachinePolicy override > global default.
+    """
+    if server_settings.monitor_only:
+        return ClientMode.MONITOR
+    override = (
+        MachinePolicy.objects.filter(machine_id=machine_id)
+        .exclude(client_mode="")
+        .values_list("client_mode", flat=True)
+        .first()
+    )
+    return override or server_settings.default_client_mode
+
+
 def _current_session(machine_id):
     return (
         SyncSession.objects.filter(machine_id=machine_id, completed_at__isnull=True)
@@ -60,9 +77,7 @@ def preflight(request, body, machine_id):
     flag = CleanSyncFlag.objects.filter(machine_id=machine_id).first()
     sync_type = flag.requested_sync_type if flag else SyncType.NORMAL
 
-    client_mode = (
-        ClientMode.MONITOR if server_settings.monitor_only else settings.SANTA_DEFAULT_CLIENT_MODE
-    )
+    client_mode = _resolve_client_mode(machine_id, server_settings)
 
     session = SyncSession.objects.create(
         machine_id=machine_id,
@@ -224,7 +239,7 @@ def ruledownload(request, body, machine_id):
                 machine_id=machine_id,
                 audience=audience,
                 sync_type=SyncType.NORMAL,
-                client_mode=settings.SANTA_DEFAULT_CLIENT_MODE,
+                client_mode=_resolve_client_mode(machine_id, ServerSettings.get()),
                 batch_size=settings.SANTA_DEFAULT_BATCH_SIZE,
             )
 

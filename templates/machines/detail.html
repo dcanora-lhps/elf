@@ -29,6 +29,34 @@
 </div>
 {% endif %}
 
+<div class="form-section">
+  <h3>Client mode</h3>
+  <div style="padding: 12px;">
+    <p style="margin-top:0;">Effective at next preflight: <strong>{{ effective_mode }}</strong></p>
+    <form method="post">{% csrf_token %}
+      <table style="border:0;">
+        {% for field in policy_form %}
+        <tr>
+          <th style="width:180px; border:0;"><label for="{{ field.id_for_label }}">{{ field.label }}</label></th>
+          <td style="border:0;">
+            {{ field }}
+            {% if field.help_text %}<div style="color:#666;font-size:12px;">{{ field.help_text }}</div>{% endif %}
+            {{ field.errors }}
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      <p>
+        <button class="btn" type="submit">Save override</button>
+        {% if policy %}
+          <button class="btn danger" type="submit" name="action" value="clear_override"
+                  onclick="return confirm('Clear the per-machine override?');">Clear override</button>
+        {% endif %}
+      </p>
+    </form>
+  </div>
+</div>
+
 <h2>Recent syncs</h2>
 {% if sessions %}
 <table>

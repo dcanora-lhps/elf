@@ -323,11 +323,20 @@ class ServerSettings(models.Model):
     SINGLETON_ID = 1
 
     id = models.PositiveIntegerField(primary_key=True, default=SINGLETON_ID, editable=False)
+    default_client_mode = models.CharField(
+        max_length=16,
+        choices=ClientMode.choices,
+        default=ClientMode.MONITOR,
+        help_text=(
+            "Mode pushed to clients in preflight unless a per-machine override exists. "
+            "Per-machine overrides are set from each machine's detail page."
+        ),
+    )
     monitor_only = models.BooleanField(
         default=False,
         help_text=(
-            "When on, sync responses force client_mode=MONITOR and ruledownload returns no rules. "
-            "Block events are still captured. Deploy policy via the downloadable mobileconfigs."
+            "Emergency switch. When on, sync forces MONITOR and ruledownload returns no rules — "
+            "overrides both the global default and any per-machine settings."
         ),
     )
     mobileconfig_client_mode = models.PositiveSmallIntegerField(
@@ -376,6 +385,30 @@ class ServerSettings(models.Model):
 
     def __str__(self):
         return "Server settings"
+
+
+class MachinePolicy(models.Model):
+    """Per-machine overrides applied at preflight. Currently only client_mode."""
+
+    machine_id = models.CharField(max_length=255, unique=True)
+    client_mode = models.CharField(
+        max_length=16,
+        choices=ClientMode.choices,
+        blank=True,
+        default="",
+        help_text="Leave blank to use the global default.",
+    )
+    notes = models.CharField(max_length=255, blank=True, default="")
+    set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["machine_id"]
+
+    def __str__(self):
+        return f"{self.machine_id} → {self.client_mode or 'default'}"
 
 
 class CleanSyncFlag(models.Model):

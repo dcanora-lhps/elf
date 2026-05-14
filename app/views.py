@@ -16,12 +16,20 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
 
-from .forms import SORT_KEYS, EventFilterForm, RuleFilterForm, RuleForm, ServerSettingsForm
+from .forms import (
+    SORT_KEYS,
+    EventFilterForm,
+    MachinePolicyForm,
+    RuleFilterForm,
+    RuleForm,
+    ServerSettingsForm,
+)
 from .mobileconfig import AUDIENCE_LABELS, build_mobileconfig
 from .models import (
     Audience,
     AuxiliaryEvent,
     Event,
+    MachinePolicy,
     Rule,
     RuleType,
     ServerSettings,
@@ -520,32 +528,63 @@ def machine_list(request):
 
 @login_required
 def machine_detail(request, machine_id):
-    """Recent sync history for a single machine."""
+    """Recent sync history for a single machine, plus per-machine override form."""
+    policy = MachinePolicy.objects.filter(machine_id=machine_id).first()
+
+    if request.method == "POST":
+        if request.POST.get("action") == "clear_override":
+            if policy:
+                policy.delete()
+                messages.success(request, "Per-machine override cleared.")
+            return redirect("machine-detail", machine_id=machine_id)
+        form = MachinePolicyForm(request.POST, instance=policy)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.machine_id = machine_id
+            obj.set_by = request.user if request.user.is_authenticated else None
+            obj.save()
+            messages.success(request, "Override saved.")
+            return redirect("machine-detail", machine_id=machine_id)
+    else:
+        form = MachinePolicyForm(instance=policy)
+
     sessions = list(
         SyncSession.objects.filter(machine_id=machine_id).order_by("-started_at")[:50]
     )
-    if not sessions:
-        return render(
-            request, "machines/detail.html", {"machine_id": machine_id, "sessions": [], "summary": None}
+    summary = None
+    current = None
+    if sessions:
+        summary = SyncSession.objects.filter(machine_id=machine_id).aggregate(
+            sync_count=Count("id"),
+            first_seen=Min("started_at"),
+            last_seen=Max("started_at"),
+            last_completed=Max("completed_at"),
         )
-    agg = SyncSession.objects.filter(machine_id=machine_id).aggregate(
-        sync_count=Count("id"),
-        first_seen=Min("started_at"),
-        last_seen=Max("started_at"),
-        last_completed=Max("completed_at"),
-    )
+        current = sessions[0]
     recent_events = list(
         Event.objects.filter(machine_id=machine_id).order_by("-received_at")[:25]
     )
+    server_settings = ServerSettings.get()
+    if server_settings.monitor_only:
+        effective_mode = "MONITOR (monitor-only is ON)"
+    elif policy and policy.client_mode:
+        effective_mode = f"{policy.client_mode} (per-machine override)"
+    else:
+        effective_mode = f"{server_settings.default_client_mode} (global default)"
+
     return render(
         request,
         "machines/detail.html",
         {
             "machine_id": machine_id,
             "sessions": sessions,
-            "summary": agg,
-            "current": sessions[0],
+            "summary": summary,
+            "current": current,
             "recent_events": recent_events,
+            "policy": policy,
+            "policy_form": form,
+            "effective_mode": effective_mode,
+            "server_settings": server_settings,
         },
     )
 

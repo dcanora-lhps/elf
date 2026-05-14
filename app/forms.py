@@ -1,12 +1,13 @@
 from django import forms
 
-from .models import Audience, Policy, Rule, RuleType, ServerSettings
+from .models import Audience, MachinePolicy, Policy, Rule, RuleType, ServerSettings
 
 
 class ServerSettingsForm(forms.ModelForm):
     class Meta:
         model = ServerSettings
         fields = [
+            "default_client_mode",
             "monitor_only",
             "mobileconfig_client_mode",
             "organization",
@@ -15,6 +16,20 @@ class ServerSettingsForm(forms.ModelForm):
         ]
         widgets = {
             "allowed_path_regex": forms.TextInput(attrs={"size": 60}),
+        }
+
+
+class MachinePolicyForm(forms.ModelForm):
+    """Per-machine override. machine_id is set by the view, not the user."""
+
+    class Meta:
+        model = MachinePolicy
+        fields = ["client_mode", "notes"]
+        widgets = {
+            "notes": forms.TextInput(attrs={"size": 60, "placeholder": "Why this override exists"}),
+        }
+        labels = {
+            "client_mode": "Client mode override",
         }
 
     def clean_allowed_path_regex(self):
