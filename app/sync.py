@@ -114,14 +114,13 @@ def preflight(request, body, machine_id):
     return JsonResponse(response)
 
 
-# (ServerSettings field name, preflight JSON key). Per santa.dev configuration keys.
+# (ServerSettings field name, preflight JSON key). Only fields present in
+# northpolesec santa.sync.v1 PreflightResponse — other Santa block-dialog keys
+# (unknown_block_message, banned_block_message, mode_notification_*) are
+# configuration-profile only and cannot be delivered via sync.
 _DIALOG_PREFLIGHT_KEYS = (
     ("event_detail_url", "event_detail_url"),
     ("event_detail_text", "event_detail_text"),
-    ("unknown_block_message", "unknown_block_message"),
-    ("banned_block_message", "banned_block_message"),
-    ("mode_notification_monitor", "mode_notification_monitor"),
-    ("mode_notification_lockdown", "mode_notification_lockdown"),
 )
 
 

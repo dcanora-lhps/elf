@@ -364,32 +364,6 @@ class ServerSettings(models.Model):
         default="",
         help_text='Label for the "Open Event" button. Defaults to Santa\'s built-in text when blank.',
     )
-    unknown_block_message = models.TextField(
-        blank=True,
-        default="",
-        help_text=(
-            "Shown when an unsigned/unknown binary is blocked because no rule covers it "
-            "(LOCKDOWN mode). Supports basic HTML."
-        ),
-    )
-    banned_block_message = models.TextField(
-        blank=True,
-        default="",
-        help_text=(
-            "Shown when a binary is blocked because a BLOCKLIST rule matches it. Per-rule "
-            "<em>Block dialog → Custom message</em> on the matching Rule overrides this."
-        ),
-    )
-    mode_notification_monitor = models.TextField(
-        blank=True,
-        default="",
-        help_text="Notification banner shown when the client transitions into MONITOR mode.",
-    )
-    mode_notification_lockdown = models.TextField(
-        blank=True,
-        default="",
-        help_text="Notification banner shown when the client transitions into LOCKDOWN mode.",
-    )
 
     class Meta:
         verbose_name = "Server settings"

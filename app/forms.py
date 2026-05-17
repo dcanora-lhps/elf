@@ -12,35 +12,17 @@ class ServerSettingsForm(forms.ModelForm):
             "allowed_path_regex",
             "event_detail_url",
             "event_detail_text",
-            "unknown_block_message",
-            "banned_block_message",
-            "mode_notification_monitor",
-            "mode_notification_lockdown",
         ]
         widgets = {
             "allowed_path_regex": forms.TextInput(attrs={"size": 60}),
             "event_detail_url": forms.TextInput(attrs={"size": 60}),
             "event_detail_text": forms.TextInput(attrs={"size": 40}),
-            "unknown_block_message": forms.Textarea(attrs={"rows": 3, "cols": 60}),
-            "banned_block_message": forms.Textarea(attrs={"rows": 3, "cols": 60}),
-            "mode_notification_monitor": forms.Textarea(attrs={"rows": 2, "cols": 60}),
-            "mode_notification_lockdown": forms.Textarea(attrs={"rows": 2, "cols": 60}),
         }
 
     # Section grouping for the settings template.
     SECTIONS = (
         ("Sync", ("default_client_mode", "monitor_only", "allowed_path_regex")),
-        (
-            "Block dialog defaults",
-            (
-                "event_detail_url",
-                "event_detail_text",
-                "unknown_block_message",
-                "banned_block_message",
-                "mode_notification_monitor",
-                "mode_notification_lockdown",
-            ),
-        ),
+        ("Block dialog defaults", ("event_detail_url", "event_detail_text")),
     )
 
     def sectioned_fields(self):
