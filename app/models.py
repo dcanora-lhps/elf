@@ -323,9 +323,34 @@ class ServerSettings(models.Model):
         choices=ClientMode.choices,
         default=ClientMode.MONITOR,
         help_text=(
-            "Mode pushed to clients in preflight unless a per-machine override exists. "
-            "Per-machine overrides are set from each machine's detail page."
+            "Fallback mode pushed to clients when neither a per-machine override nor "
+            "an audience-level override applies. Per-machine overrides are set from "
+            "each machine's detail page."
         ),
+    )
+    middle_school_client_mode = models.CharField(
+        max_length=16,
+        choices=ClientMode.choices,
+        blank=True,
+        default="",
+        help_text="Mode for MS-* machines. Leave blank to fall back to the global default.",
+    )
+    upper_school_client_mode = models.CharField(
+        max_length=16,
+        choices=ClientMode.choices,
+        blank=True,
+        default="",
+        help_text=(
+            "Mode for US-* machines (and unrecognized machine IDs, which route to "
+            "upper school). Leave blank to fall back to the global default."
+        ),
+    )
+    teacher_client_mode = models.CharField(
+        max_length=16,
+        choices=ClientMode.choices,
+        blank=True,
+        default="",
+        help_text="Mode for machines whose ID contains \"EMP\". Leave blank to fall back to the global default.",
     )
     monitor_only = models.BooleanField(
         default=False,

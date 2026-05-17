@@ -16,6 +16,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
 
+from .audience import audience_for
 from .forms import (
     SORT_KEYS,
     EventFilterForm,
@@ -567,10 +568,20 @@ def machine_detail(request, machine_id):
         Event.objects.filter(machine_id=machine_id).order_by("-received_at")[:25]
     )
     server_settings = ServerSettings.get()
+    machine_audience = audience_for(machine_id)
+    audience_field = {
+        Audience.MIDDLE_SCHOOL: "middle_school_client_mode",
+        Audience.UPPER_SCHOOL: "upper_school_client_mode",
+        Audience.TEACHER: "teacher_client_mode",
+    }.get(machine_audience)
+    audience_mode = getattr(server_settings, audience_field, "") if audience_field else ""
     if server_settings.monitor_only:
         effective_mode = "MONITOR (monitor-only is ON)"
     elif policy and policy.client_mode:
         effective_mode = f"{policy.client_mode} (per-machine override)"
+    elif audience_mode:
+        audience_label = dict(Audience.choices).get(machine_audience, machine_audience)
+        effective_mode = f"{audience_mode} ({audience_label} override)"
     else:
         effective_mode = f"{server_settings.default_client_mode} (global default)"
 

@@ -42,10 +42,18 @@ def _track_unknown(machine_id):
     )
 
 
-def _resolve_client_mode(machine_id, server_settings):
+_AUDIENCE_CLIENT_MODE_FIELDS = {
+    Audience.MIDDLE_SCHOOL: "middle_school_client_mode",
+    Audience.UPPER_SCHOOL: "upper_school_client_mode",
+    Audience.TEACHER: "teacher_client_mode",
+}
+
+
+def _resolve_client_mode(machine_id, server_settings, audience):
     """Decide which client_mode to push to a client at preflight.
 
-    Precedence: monitor_only (emergency switch) > MachinePolicy override > global default.
+    Precedence: monitor_only (emergency switch) > MachinePolicy override >
+    per-audience override > global default.
     """
     if server_settings.monitor_only:
         return ClientMode.MONITOR
@@ -55,7 +63,14 @@ def _resolve_client_mode(machine_id, server_settings):
         .values_list("client_mode", flat=True)
         .first()
     )
-    return override or server_settings.default_client_mode
+    if override:
+        return override
+    field = _AUDIENCE_CLIENT_MODE_FIELDS.get(audience)
+    if field:
+        audience_mode = getattr(server_settings, field, "") or ""
+        if audience_mode:
+            return audience_mode
+    return server_settings.default_client_mode
 
 
 def _current_session(machine_id):
@@ -77,7 +92,7 @@ def preflight(request, body, machine_id):
     flag = CleanSyncFlag.objects.filter(machine_id=machine_id).first()
     sync_type = flag.requested_sync_type if flag else SyncType.NORMAL
 
-    client_mode = _resolve_client_mode(machine_id, server_settings)
+    client_mode = _resolve_client_mode(machine_id, server_settings, audience)
 
     session = SyncSession.objects.create(
         machine_id=machine_id,
@@ -253,7 +268,7 @@ def ruledownload(request, body, machine_id):
                 machine_id=machine_id,
                 audience=audience,
                 sync_type=SyncType.NORMAL,
-                client_mode=_resolve_client_mode(machine_id, ServerSettings.get()),
+                client_mode=_resolve_client_mode(machine_id, ServerSettings.get(), audience),
                 batch_size=settings.SANTA_DEFAULT_BATCH_SIZE,
             )
 

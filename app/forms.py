@@ -8,6 +8,9 @@ class ServerSettingsForm(forms.ModelForm):
         model = ServerSettings
         fields = [
             "default_client_mode",
+            "middle_school_client_mode",
+            "upper_school_client_mode",
+            "teacher_client_mode",
             "monitor_only",
             "allowed_path_regex",
             "event_detail_url",
@@ -22,6 +25,14 @@ class ServerSettingsForm(forms.ModelForm):
     # Section grouping for the settings template.
     SECTIONS = (
         ("Sync", ("default_client_mode", "monitor_only", "allowed_path_regex")),
+        (
+            "Per-audience client mode (blank = use global default)",
+            (
+                "middle_school_client_mode",
+                "upper_school_client_mode",
+                "teacher_client_mode",
+            ),
+        ),
         ("Block dialog defaults", ("event_detail_url", "event_detail_text")),
     )
 
