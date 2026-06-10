@@ -16,6 +16,7 @@ from .models import (
     CleanSyncFlag,
     ClientMode,
     Event,
+    Machine,
     MachinePolicy,
     ServerSettings,
     SyncSession,
@@ -81,6 +82,32 @@ def _current_session(machine_id):
     )
 
 
+_MACHINE_IDENTITY_FIELDS = (
+    "machine_owner",
+    "primary_user",
+    "hostname",
+    "serial_num",
+    "os_version",
+    "os_build",
+    "model_identifier",
+    "santa_version",
+)
+
+
+def _touch_machine(machine_id, audience, identity):
+    """Upsert the Machine roster row at preflight time and bump sync_count."""
+    now = timezone.now()
+    defaults = {"audience": audience, "last_seen": now, **identity}
+    _, created = Machine.objects.get_or_create(
+        machine_id=machine_id,
+        defaults={**defaults, "first_seen": now, "sync_count": 1},
+    )
+    if not created:
+        Machine.objects.filter(machine_id=machine_id).update(
+            sync_count=F("sync_count") + 1, **defaults
+        )
+
+
 @json_endpoint
 def preflight(request, body, machine_id):
     audience = audience_for(machine_id)
@@ -94,6 +121,16 @@ def preflight(request, body, machine_id):
 
     client_mode = _resolve_client_mode(machine_id, server_settings, audience)
 
+    identity = {
+        "machine_owner": str(body.get("machine_owner") or "")[:255],
+        "primary_user": str(body.get("primary_user") or "")[:255],
+        "hostname": str(body.get("hostname") or "")[:255],
+        "serial_num": str(body.get("serial_num") or "")[:128],
+        "os_version": str(body.get("os_version") or "")[:64],
+        "os_build": str(body.get("os_build") or "")[:64],
+        "model_identifier": str(body.get("model_identifier") or "")[:128],
+        "santa_version": str(body.get("santa_version") or "")[:64],
+    }
     session = SyncSession.objects.create(
         machine_id=machine_id,
         audience=audience,
@@ -102,15 +139,9 @@ def preflight(request, body, machine_id):
         batch_size=settings.SANTA_DEFAULT_BATCH_SIZE,
         client_rules_hash=str(body.get("rules_hash") or ""),
         consumed_clean_flag=bool(flag),
-        machine_owner=str(body.get("machine_owner") or "")[:255],
-        primary_user=str(body.get("primary_user") or "")[:255],
-        hostname=str(body.get("hostname") or "")[:255],
-        serial_num=str(body.get("serial_num") or "")[:128],
-        os_version=str(body.get("os_version") or "")[:64],
-        os_build=str(body.get("os_build") or "")[:64],
-        model_identifier=str(body.get("model_identifier") or "")[:128],
-        santa_version=str(body.get("santa_version") or "")[:64],
+        **identity,
     )
+    _touch_machine(machine_id, audience, identity)
 
     response = {
         "client_mode": session.client_mode,
@@ -315,12 +346,15 @@ def postflight(request, body, machine_id):
     completed_sync_type = str(body.get("sync_type") or "")
     rules_hash = str(body.get("rules_hash") or "")
 
+    now = timezone.now()
     session.rules_received = received
     session.rules_processed = processed
     session.postflight_sync_type = completed_sync_type
     session.final_rules_hash = rules_hash
-    session.completed_at = timezone.now()
+    session.completed_at = now
     session.save()
+
+    Machine.objects.filter(machine_id=machine_id).update(last_completed=now)
 
     SyncCursor = session.cursors.model
     SyncCursor.objects.filter(session=session).delete()

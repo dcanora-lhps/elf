@@ -256,6 +256,41 @@ class AuxiliaryEvent(models.Model):
         ordering = ["-received_at"]
 
 
+class Machine(models.Model):
+    """Roster row, one per machine_id. Maintained by sync preflight/postflight.
+
+    Identity fields cache the most recent values reported in preflight so the
+    Machines tab can render without aggregating SyncSession on every request.
+    """
+
+    machine_id = models.CharField(max_length=255, unique=True)
+    audience = models.CharField(max_length=16, choices=Audience.choices, db_index=True)
+
+    machine_owner = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    primary_user = models.CharField(max_length=255, blank=True, default="")
+    hostname = models.CharField(max_length=255, blank=True, default="")
+    serial_num = models.CharField(max_length=128, blank=True, default="")
+    os_version = models.CharField(max_length=64, blank=True, default="")
+    os_build = models.CharField(max_length=64, blank=True, default="")
+    model_identifier = models.CharField(max_length=128, blank=True, default="")
+    santa_version = models.CharField(max_length=64, blank=True, default="")
+
+    first_seen = models.DateTimeField(default=timezone.now)
+    last_seen = models.DateTimeField(default=timezone.now, db_index=True)
+    last_completed = models.DateTimeField(null=True, blank=True)
+    sync_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-last_seen"]
+        indexes = [
+            models.Index(fields=["-last_seen"]),
+            models.Index(fields=["-sync_count"]),
+        ]
+
+    def __str__(self):
+        return self.machine_owner or self.hostname or self.machine_id
+
+
 class UnknownMachine(models.Model):
     machine_id = models.CharField(max_length=255, unique=True)
     first_seen = models.DateTimeField(auto_now_add=True)

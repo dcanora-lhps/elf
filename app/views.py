@@ -31,6 +31,7 @@ from .models import (
     AuxiliaryEvent,
     CleanSyncFlag,
     Event,
+    Machine,
     MachinePolicy,
     Rule,
     RuleType,
@@ -419,14 +420,14 @@ class UnknownMachineListView(LoginRequiredMixin, ListView):
 
 
 MACHINE_LIST_SORTS = {
-    "-last_seen": ("-last_seen",),
-    "last_seen": ("last_seen",),
-    "-first_seen": ("-first_seen",),
-    "first_seen": ("first_seen",),
-    "-sync_count": ("-sync_count", "-last_seen"),
-    "sync_count": ("sync_count", "-last_seen"),
-    "machine_id": ("machine_id",),
-    "-machine_id": ("-machine_id",),
+    "-last_seen",
+    "last_seen",
+    "-first_seen",
+    "first_seen",
+    "-sync_count",
+    "sync_count",
+    "machine_id",
+    "-machine_id",
 }
 
 _ACTIVE_WINDOWS = {
@@ -441,8 +442,8 @@ _CLEAN_SYNC_VALUES = {s.value for s in CLEAN_SYNC_TYPES}
 
 @login_required
 def machine_list(request):
-    """Aggregate SyncSession rows by machine_id to show a roster of machines and last check-in."""
-    qs = SyncSession.objects.all()
+    """Roster of machines and last check-in, served straight from the Machine table."""
+    qs = Machine.objects.all()
 
     q = (request.GET.get("q") or "").strip()
     if q:
@@ -460,47 +461,23 @@ def machine_list(request):
 
     active = (request.GET.get("active") or "").strip()
     if active in _ACTIVE_WINDOWS:
-        qs = qs.filter(started_at__gte=timezone.now() - _ACTIVE_WINDOWS[active])
+        qs = qs.filter(last_seen__gte=timezone.now() - _ACTIVE_WINDOWS[active])
 
     sort = request.GET.get("sort") or "-last_seen"
     if sort not in MACHINE_LIST_SORTS:
         sort = "-last_seen"
 
-    aggregated = (
-        qs.values("machine_id")
-        .annotate(
-            sync_count=Count("id"),
-            last_seen=Max("started_at"),
-            first_seen=Min("started_at"),
-            last_completed=Max("completed_at"),
-        )
-        .order_by(*MACHINE_LIST_SORTS[sort])
-    )
-
-    paginator = Paginator(aggregated, 100)
+    paginator = Paginator(qs.order_by(sort, "-id"), 100)
     page_obj = paginator.get_page(request.GET.get("page"))
 
-    last_per_machine = {}
-    for s in (
-        SyncSession.objects.filter(machine_id__in=[r["machine_id"] for r in page_obj.object_list])
-        .order_by("machine_id", "-started_at")
-        .only(
-            "machine_id", "audience", "sync_type", "client_mode", "started_at", "completed_at",
-            "machine_owner", "primary_user", "hostname", "serial_num", "os_version", "santa_version",
-        )
-    ):
-        last_per_machine.setdefault(s.machine_id, s)
-
+    page_machines = list(page_obj.object_list)
     pending_per_machine = dict(
         CleanSyncFlag.objects.filter(
-            machine_id__in=[r["machine_id"] for r in page_obj.object_list]
+            machine_id__in=[m.machine_id for m in page_machines]
         ).values_list("machine_id", "requested_sync_type")
     )
-
-    rows = []
-    for r in page_obj.object_list:
-        last = last_per_machine.get(r["machine_id"])
-        rows.append({**r, "last": last, "pending_clean": pending_per_machine.get(r["machine_id"])})
+    for m in page_machines:
+        m.pending_clean = pending_per_machine.get(m.machine_id)
 
     filters_only = request.GET.copy()
     filters_only.pop("sort", None)
@@ -510,7 +487,7 @@ def machine_list(request):
         request,
         "machines/list.html",
         {
-            "rows": rows,
+            "machines": page_machines,
             "page_obj": page_obj,
             "paginator": paginator,
             "is_paginated": paginator.num_pages > 1,
@@ -551,24 +528,15 @@ def machine_detail(request, machine_id):
     else:
         form = MachinePolicyForm(instance=policy)
 
+    machine = Machine.objects.filter(machine_id=machine_id).first()
     sessions = list(
         SyncSession.objects.filter(machine_id=machine_id).order_by("-started_at")[:50]
     )
-    summary = None
-    current = None
-    if sessions:
-        summary = SyncSession.objects.filter(machine_id=machine_id).aggregate(
-            sync_count=Count("id"),
-            first_seen=Min("started_at"),
-            last_seen=Max("started_at"),
-            last_completed=Max("completed_at"),
-        )
-        current = sessions[0]
     recent_events = list(
         Event.objects.filter(machine_id=machine_id).order_by("-received_at")[:25]
     )
     server_settings = ServerSettings.get()
-    machine_audience = audience_for(machine_id)
+    machine_audience = machine.audience if machine else audience_for(machine_id)
     audience_field = {
         Audience.MIDDLE_SCHOOL: "middle_school_client_mode",
         Audience.UPPER_SCHOOL: "upper_school_client_mode",
@@ -592,9 +560,8 @@ def machine_detail(request, machine_id):
         "machines/detail.html",
         {
             "machine_id": machine_id,
+            "machine": machine,
             "sessions": sessions,
-            "summary": summary,
-            "current": current,
             "recent_events": recent_events,
             "policy": policy,
             "policy_form": form,
@@ -642,7 +609,7 @@ def machines_clean_sync_all(request):
         sync_type = SyncType.CLEAN_ALL.value
     reason = (request.POST.get("reason") or "")[:255] or "fleet-wide clean sync"
 
-    machine_ids = list(SyncSession.objects.values_list("machine_id", flat=True).distinct())
+    machine_ids = list(Machine.objects.values_list("machine_id", flat=True))
     user = request.user if request.user.is_authenticated else None
 
     count = 0

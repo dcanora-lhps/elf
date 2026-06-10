@@ -50,7 +50,7 @@
   </form>
 </div>
 
-{% if rows %}
+{% if machines %}
 <table>
 <thead>
 <tr>
@@ -65,27 +65,27 @@
 </tr>
 </thead>
 <tbody>
-{% for r in rows %}
+{% for m in machines %}
 <tr>
   <td>
-    <a href="{% url 'machine-detail' r.machine_id %}">
-      <strong>{{ r.last.machine_owner|default:r.last.primary_user|default:"—" }}</strong>
+    <a href="{% url 'machine-detail' m.machine_id %}">
+      <strong>{{ m.machine_owner|default:m.primary_user|default:"—" }}</strong>
     </a>
-    {% if r.pending_clean %}<span class="pill unknown" title="Clean sync queued">{{ r.pending_clean }}</span>{% endif %}
-    {% if r.last.machine_owner and r.last.primary_user and r.last.primary_user != r.last.machine_owner %}
-      <br><small style="color:#666">user: {{ r.last.primary_user }}</small>
+    {% if m.pending_clean %}<span class="pill unknown" title="Clean sync queued">{{ m.pending_clean }}</span>{% endif %}
+    {% if m.machine_owner and m.primary_user and m.primary_user != m.machine_owner %}
+      <br><small style="color:#666">user: {{ m.primary_user }}</small>
     {% endif %}
   </td>
   <td>
-    {% if r.last.hostname %}{{ r.last.hostname }}<br>{% endif %}
-    <small class="mono" style="color:#666">{{ r.machine_id|truncatechars:40 }}</small>
+    {% if m.hostname %}{{ m.hostname }}<br>{% endif %}
+    <small class="mono" style="color:#666">{{ m.machine_id|truncatechars:40 }}</small>
   </td>
-  <td>{% if r.last %}<span class="pill {{ r.last.audience }}">{{ r.last.get_audience_display }}</span>{% else %}—{% endif %}</td>
-  <td>{{ r.last.os_version|default:"—" }}</td>
-  <td>{{ r.last.santa_version|default:"—" }}</td>
-  <td>{{ r.last_seen|date:"Y-m-d H:i:s" }}</td>
-  <td>{{ r.first_seen|date:"Y-m-d H:i" }}</td>
-  <td>{{ r.sync_count }}</td>
+  <td><span class="pill {{ m.audience }}">{{ m.get_audience_display }}</span></td>
+  <td>{{ m.os_version|default:"—" }}</td>
+  <td>{{ m.santa_version|default:"—" }}</td>
+  <td>{{ m.last_seen|date:"Y-m-d H:i:s" }}</td>
+  <td>{{ m.first_seen|date:"Y-m-d H:i" }}</td>
+  <td>{{ m.sync_count }}</td>
 </tr>
 {% endfor %}
 </tbody>

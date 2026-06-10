@@ -1,31 +1,29 @@
 {% extends "base.html" %}
-{% block title %}{{ current.machine_owner|default:current.hostname|default:machine_id }} — elf{% endblock %}
+{% block title %}{{ machine.machine_owner|default:machine.hostname|default:machine_id }} — elf{% endblock %}
 {% block content %}
 <p><a href="{% url 'machine-list' %}">← all machines</a></p>
-<h1>{{ current.machine_owner|default:current.primary_user|default:current.hostname|default:machine_id }}</h1>
+<h1>{{ machine.machine_owner|default:machine.primary_user|default:machine.hostname|default:machine_id }}</h1>
 <p class="mono" style="color:#666; word-break:break-all;">{{ machine_id }}</p>
 
-{% if current %}
+{% if machine %}
 <div class="form-section">
   <h3>Identity (from last preflight)</h3>
   <table>
-    <tr><th style="width:180px;">Machine owner</th><td>{{ current.machine_owner|default:"—" }}</td></tr>
-    <tr><th>Primary user</th><td>{{ current.primary_user|default:"—" }}</td></tr>
-    <tr><th>Hostname</th><td>{{ current.hostname|default:"—" }}</td></tr>
-    <tr><th>Serial</th><td class="mono">{{ current.serial_num|default:"—" }}</td></tr>
-    <tr><th>Model</th><td>{{ current.model_identifier|default:"—" }}</td></tr>
-    <tr><th>OS</th><td>{{ current.os_version|default:"—" }}{% if current.os_build %} ({{ current.os_build }}){% endif %}</td></tr>
-    <tr><th>Santa</th><td>{{ current.santa_version|default:"—" }}</td></tr>
-    <tr><th>Audience</th><td><span class="pill {{ current.audience }}">{{ current.get_audience_display }}</span></td></tr>
+    <tr><th style="width:180px;">Machine owner</th><td>{{ machine.machine_owner|default:"—" }}</td></tr>
+    <tr><th>Primary user</th><td>{{ machine.primary_user|default:"—" }}</td></tr>
+    <tr><th>Hostname</th><td>{{ machine.hostname|default:"—" }}</td></tr>
+    <tr><th>Serial</th><td class="mono">{{ machine.serial_num|default:"—" }}</td></tr>
+    <tr><th>Model</th><td>{{ machine.model_identifier|default:"—" }}</td></tr>
+    <tr><th>OS</th><td>{{ machine.os_version|default:"—" }}{% if machine.os_build %} ({{ machine.os_build }}){% endif %}</td></tr>
+    <tr><th>Santa</th><td>{{ machine.santa_version|default:"—" }}</td></tr>
+    <tr><th>Audience</th><td><span class="pill {{ machine.audience }}">{{ machine.get_audience_display }}</span></td></tr>
   </table>
 </div>
-{% endif %}
 
-{% if summary %}
 <div class="stat-grid" style="margin-bottom:18px;">
-  <div class="stat"><div class="n">{{ summary.sync_count }}</div><div class="l">syncs recorded</div></div>
-  <div class="stat"><div class="n">{{ summary.last_seen|date:"Y-m-d H:i" }}</div><div class="l">last seen</div></div>
-  <div class="stat"><div class="n">{{ summary.first_seen|date:"Y-m-d H:i" }}</div><div class="l">first seen</div></div>
+  <div class="stat"><div class="n">{{ machine.sync_count }}</div><div class="l">syncs recorded</div></div>
+  <div class="stat"><div class="n">{{ machine.last_seen|date:"Y-m-d H:i" }}</div><div class="l">last seen</div></div>
+  <div class="stat"><div class="n">{{ machine.first_seen|date:"Y-m-d H:i" }}</div><div class="l">first seen</div></div>
 </div>
 {% endif %}
 

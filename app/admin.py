@@ -4,6 +4,7 @@ from .models import (
     AuxiliaryEvent,
     CleanSyncFlag,
     Event,
+    Machine,
     Rule,
     ServerSettings,
     SyncCursor,
@@ -65,6 +66,26 @@ class AuxiliaryEventAdmin(admin.ModelAdmin):
     list_filter = ("kind", "audience")
     search_fields = ("machine_id",)
     readonly_fields = ("machine_id", "audience", "kind", "payload", "received_at")
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(Machine)
+class MachineAdmin(admin.ModelAdmin):
+    list_display = (
+        "machine_id",
+        "machine_owner",
+        "hostname",
+        "audience",
+        "os_version",
+        "santa_version",
+        "sync_count",
+        "last_seen",
+    )
+    list_filter = ("audience",)
+    search_fields = ("machine_id", "machine_owner", "primary_user", "hostname", "serial_num")
+    readonly_fields = [f.name for f in Machine._meta.fields]
 
     def has_add_permission(self, request):
         return False
