@@ -17,6 +17,22 @@ def _extract_token(request):
     return request.META.get("HTTP_X_SANTA_TOKEN", "").strip()
 
 
+def _strip_nuls(value):
+    """Recursively strip NUL bytes (\\u0000) from strings in a decoded JSON value.
+
+    Why: Postgres' jsonb type rejects \\u0000 in string values, and CharField inserts
+    fail the same way. Santa clients occasionally surface NULs in event fields
+    (e.g. signing-chain certificate blobs that include binary padding).
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "") if "\x00" in value else value
+    if isinstance(value, dict):
+        return {k: _strip_nuls(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_nuls(v) for v in value]
+    return value
+
+
 def _decompress(body, encoding):
     """Decompress a request body per Content-Encoding.
 
@@ -63,6 +79,6 @@ def json_endpoint(view):
             return JsonResponse({"error": "invalid json"}, status=400)
         if not isinstance(body, dict):
             return JsonResponse({"error": "expected JSON object"}, status=400)
-        return view(request, body, *args, **kwargs)
+        return view(request, _strip_nuls(body), *args, **kwargs)
 
     return wrapper
