@@ -26,7 +26,7 @@ from .forms import (
     ServerSettingsForm,
 )
 from .models import (
-    CLEAN_SYNC_TYPES,
+    REQUESTABLE_CLEAN_SYNC_TYPES,
     Audience,
     AuxiliaryEvent,
     CleanSyncFlag,
@@ -64,7 +64,9 @@ def dashboard(request):
             received_at__gte=last_day, decision__startswith="BLOCK_"
         ).count(),
         "unknown_count": UnknownMachine.objects.count(),
-        "in_flight_sessions": SyncSession.objects.filter(completed_at__isnull=True).count(),
+        "in_flight_sessions": SyncSession.objects.filter(
+            completed_at__isnull=True, abandoned_at__isnull=True
+        ).count(),
         "server_settings": ServerSettings.get(),
         "top_blocked": top_blocked,
     }
@@ -437,7 +439,8 @@ _ACTIVE_WINDOWS = {
     "30d": timedelta(days=30),
 }
 
-_CLEAN_SYNC_VALUES = {s.value for s in CLEAN_SYNC_TYPES}
+# Clean types an operator can queue on top of the CLEAN every sync already does.
+_CLEAN_SYNC_VALUES = {t.value for t in REQUESTABLE_CLEAN_SYNC_TYPES}
 
 
 @login_required
@@ -500,7 +503,6 @@ def machine_list(request):
             "audience_choices": Audience.choices,
             "active_choices": [("1h", "Last hour"), ("24h", "Last 24h"), ("7d", "Last 7 days"), ("30d", "Last 30 days")],
             "total_machines": paginator.count,
-            "clean_sync_choices": [(t.value, t.label) for t in SyncType if t.value in _CLEAN_SYNC_VALUES],
             "pending_clean_total": CleanSyncFlag.objects.count(),
         },
     )
@@ -568,7 +570,6 @@ def machine_detail(request, machine_id):
             "effective_mode": effective_mode,
             "server_settings": server_settings,
             "pending_clean": pending_clean,
-            "clean_sync_choices": [(t.value, t.label) for t in SyncType if t.value in {s.value for s in CLEAN_SYNC_TYPES}],
         },
     )
 

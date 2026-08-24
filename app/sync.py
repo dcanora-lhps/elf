@@ -3,28 +3,47 @@ from datetime import datetime, timezone as dt_timezone
 
 from django.conf import settings
 from django.db.models import F, Q
+from django.db.models.functions import Greatest
 from django.http import JsonResponse
 from django.utils import timezone
 
-from .audience import audience_for, is_recognized_machine_id, rules_queryset_for
+from .audience import (
+    UnknownAudience,
+    audience_for,
+    is_recognized_machine_id,
+    rules_queryset_for,
+)
 from .auth import json_endpoint
-from .cursors import get_cursor, new_cursor
+from .cursors import cursor_for_position, get_cursor
 from .models import (
+    DEFAULT_SYNC_TYPE,
     Audience,
     AuxiliaryEvent,
-    CLEAN_SYNC_TYPES,
     CleanSyncFlag,
     ClientMode,
     Event,
     Machine,
     MachinePolicy,
     ServerSettings,
+    SyncCursor,
     SyncSession,
     SyncType,
     UnknownMachine,
+    normalize_sync_type,
 )
 
 log = logging.getLogger("santa.sync")
+
+
+def _server_error(detail):
+    """Fail a sync stage loudly.
+
+    Santa retries a 500 five times with backoff and then abandons the sync
+    (SNTSyncStage.mm), leaving the machine's existing rules in place. That is
+    the only safe answer when we can't produce the complete ruleset: every sync
+    is a clean sync, so a short response would be applied as the whole truth.
+    """
+    return JsonResponse({"error": detail}, status=500)
 
 
 def _epoch_to_dt(value):
@@ -76,10 +95,29 @@ def _resolve_client_mode(machine_id, server_settings, audience):
 
 def _current_session(machine_id):
     return (
-        SyncSession.objects.filter(machine_id=machine_id, completed_at__isnull=True)
+        SyncSession.objects.filter(
+            machine_id=machine_id, completed_at__isnull=True, abandoned_at__isnull=True
+        )
         .order_by("-started_at")
         .first()
     )
+
+
+def _abandon_open_sessions(machine_id, now):
+    """Close out any still-open session for this machine.
+
+    Santa syncs one stage sequence at a time, so a fresh preflight proves the
+    previous sync never reached postflight. Marking those rows keeps the
+    machine page honest and stops a stale session from collecting rule pages.
+    """
+    open_sessions = SyncSession.objects.filter(
+        machine_id=machine_id, completed_at__isnull=True, abandoned_at__isnull=True
+    )
+    stale_pks = list(open_sessions.values_list("pk", flat=True))
+    if not stale_pks:
+        return
+    SyncCursor.objects.filter(session_id__in=stale_pks).delete()
+    SyncSession.objects.filter(pk__in=stale_pks).update(abandoned_at=now)
 
 
 _MACHINE_IDENTITY_FIELDS = (
@@ -116,8 +154,10 @@ def preflight(request, body, machine_id):
 
     server_settings = ServerSettings.get()
 
+    # Every sync is clean, so the client's ruleset is whatever this sync
+    # delivers; a queued flag only escalates to a stronger clean type.
     flag = CleanSyncFlag.objects.filter(machine_id=machine_id).first()
-    sync_type = flag.requested_sync_type if flag else SyncType.NORMAL
+    sync_type = flag.requested_sync_type if flag else DEFAULT_SYNC_TYPE
 
     client_mode = _resolve_client_mode(machine_id, server_settings, audience)
 
@@ -131,6 +171,8 @@ def preflight(request, body, machine_id):
         "model_identifier": str(body.get("model_identifier") or "")[:128],
         "santa_version": str(body.get("santa_version") or "")[:64],
     }
+    now = timezone.now()
+    _abandon_open_sessions(machine_id, now)
     session = SyncSession.objects.create(
         machine_id=machine_id,
         audience=audience,
@@ -139,6 +181,7 @@ def preflight(request, body, machine_id):
         batch_size=settings.SANTA_DEFAULT_BATCH_SIZE,
         client_rules_hash=str(body.get("rules_hash") or ""),
         consumed_clean_flag=bool(flag),
+        consumed_clean_flag_pk=flag.pk if flag else None,
         **identity,
     )
     _touch_machine(machine_id, audience, identity)
@@ -280,6 +323,36 @@ def _serialize_rule(rule):
     return out
 
 
+def _rules_after(audience, last_pk, last_updated_at):
+    qs = rules_queryset_for(audience)
+    if not last_pk:
+        return qs
+    return qs.filter(
+        Q(updated_at__gt=last_updated_at)
+        | (Q(updated_at=last_updated_at) & Q(id__gt=last_pk))
+    )
+
+
+def _download_page(audience, cursor, batch_size):
+    """Build one ruledownload page.
+
+    Returns (rules, next_position), where next_position is
+    (last_pk, last_updated_at) or None when the ruleset is exhausted.
+    """
+    chunk = list(
+        _rules_after(
+            audience,
+            cursor.last_rule_pk if cursor else 0,
+            cursor.last_updated_at if cursor else None,
+        )[: batch_size + 1]
+    )
+    page = chunk[:batch_size]
+    rules = [_serialize_rule(r) for r in page]
+    if len(chunk) > batch_size:
+        return rules, (page[-1].id, page[-1].updated_at)
+    return rules, None
+
+
 @json_endpoint
 def ruledownload(request, body, machine_id):
     audience = audience_for(machine_id)
@@ -288,46 +361,58 @@ def ruledownload(request, body, machine_id):
 
     cursor_token = (body.get("cursor") or "").strip()
     cursor = get_cursor(cursor_token) if cursor_token else None
+    if cursor_token and cursor is None:
+        # Resuming from a position we no longer hold. Restarting would re-send
+        # the whole ruleset and finishing early would hand back a truncated one
+        # that a clean sync then applies verbatim, so fail: the client retries,
+        # gives up, and keeps the rules it has.
+        log.error("ruledownload with unknown cursor for %s", machine_id)
+        return _server_error("unknown cursor")
 
     if cursor:
         session = cursor.session
     else:
         session = _current_session(machine_id)
         if session is None:
+            # The preflight went missing (server restart, lost write). Serving
+            # is still correct — a clean sync wants the full ruleset, which is
+            # what a cursor-less request gets — so record a session and go on.
             log.warning("ruledownload without preflight for %s", machine_id)
             session = SyncSession.objects.create(
                 machine_id=machine_id,
                 audience=audience,
-                sync_type=SyncType.NORMAL,
+                sync_type=DEFAULT_SYNC_TYPE,
                 client_mode=_resolve_client_mode(machine_id, ServerSettings.get(), audience),
                 batch_size=settings.SANTA_DEFAULT_BATCH_SIZE,
             )
 
     if ServerSettings.get().monitor_only:
+        # Deliberately empty: with clean syncs this drops every rule on the
+        # machine, which is what monitor-only is for.
         return JsonResponse({"rules": [], "cursor": ""})
 
-    qs = rules_queryset_for(audience)
-    if cursor:
-        qs = qs.filter(
-            Q(updated_at__gt=cursor.last_updated_at)
-            | (Q(updated_at=cursor.last_updated_at) & Q(id__gt=cursor.last_rule_pk))
-        )
+    try:
+        rules, next_position = _download_page(audience, cursor, session.batch_size)
+    except UnknownAudience:
+        log.error("ruledownload for %s has unroutable audience %r", machine_id, audience)
+        return _server_error("unroutable audience")
 
-    batch = list(qs[: session.batch_size + 1])
-    has_more = len(batch) > session.batch_size
-    page = batch[: session.batch_size]
+    sent_before = cursor.sent_before if cursor else 0
+    sent_total = sent_before + len(rules)
 
     next_token = ""
-    if has_more:
-        next_cursor = new_cursor(session, page[-1])
-        next_token = next_cursor.token
+    if next_position:
+        last_pk, last_updated_at = next_position
+        next_token = cursor_for_position(session, last_pk, last_updated_at, sent_total).token
 
-    if cursor:
-        cursor.delete()
+    # A retry re-serves the same page, so take the high-water mark rather than
+    # adding: rules_sent stays the number of distinct rules the client was
+    # offered.
+    SyncSession.objects.filter(pk=session.pk).update(
+        rules_sent=Greatest(F("rules_sent"), sent_total)
+    )
 
-    SyncSession.objects.filter(pk=session.pk).update(rules_sent=F("rules_sent") + len(page))
-
-    return JsonResponse({"rules": [_serialize_rule(r) for r in page], "cursor": next_token})
+    return JsonResponse({"rules": rules, "cursor": next_token})
 
 
 @json_endpoint
@@ -352,14 +437,76 @@ def postflight(request, body, machine_id):
     session.postflight_sync_type = completed_sync_type
     session.final_rules_hash = rules_hash
     session.completed_at = now
-    session.save()
+    session.clean_flag_kept_reason = _clear_clean_flag(session, completed_sync_type)
+    # update_fields so a rule page still in flight can't have its rules_sent
+    # tally overwritten by this stale in-memory copy.
+    session.save(
+        update_fields=[
+            "rules_received",
+            "rules_processed",
+            "postflight_sync_type",
+            "final_rules_hash",
+            "completed_at",
+            "clean_flag_kept_reason",
+        ]
+    )
 
     Machine.objects.filter(machine_id=machine_id).update(last_completed=now)
 
-    SyncCursor = session.cursors.model
     SyncCursor.objects.filter(session=session).delete()
 
-    if session.consumed_clean_flag and completed_sync_type in CLEAN_SYNC_TYPES:
-        CleanSyncFlag.objects.filter(machine_id=machine_id).delete()
-
     return JsonResponse({})
+
+
+def _satisfies(requested, reported):
+    """True if the sync the client reports covers what preflight asked for.
+
+    CLEAN_ALL is the strongest type and satisfies any request; anything else
+    only satisfies an identical request. A client that reports nothing is
+    trusted — older clients omit the field at postflight, and the sync did
+    finish.
+    """
+    reported = normalize_sync_type(reported)
+    if not reported:
+        return True
+    return reported == normalize_sync_type(requested) or reported == SyncType.CLEAN_ALL
+
+
+def _clear_clean_flag(session, completed_sync_type):
+    """Retire the clean-sync escalation this session consumed.
+
+    Only the exact CleanSyncFlag row read at preflight is deleted, so a request
+    queued while the sync was running survives to be served next time. Returns
+    a reason string when the flag is deliberately left in place, empty
+    otherwise.
+    """
+    if not session.consumed_clean_flag:
+        return ""
+
+    if session.consumed_clean_flag_pk is not None:
+        flag = CleanSyncFlag.objects.filter(pk=session.consumed_clean_flag_pk).first()
+    else:
+        # Sessions created before consumed_clean_flag_pk existed.
+        flag = CleanSyncFlag.objects.filter(machine_id=session.machine_id).first()
+    if flag is None:
+        return ""
+
+    if not _satisfies(session.sync_type, completed_sync_type):
+        # The client did a lesser sync than we asked for, so the escalation
+        # never happened: keep it queued and say why on the machine page.
+        log.warning(
+            "postflight for %s completed %s after %s was requested; keeping clean flag",
+            session.machine_id,
+            completed_sync_type,
+            session.sync_type,
+        )
+        return f"client reported {completed_sync_type}, not {session.sync_type}"
+
+    if not normalize_sync_type(completed_sync_type):
+        log.info(
+            "postflight for %s reported no sync_type; clearing %s request",
+            session.machine_id,
+            session.sync_type,
+        )
+    flag.delete()
+    return ""

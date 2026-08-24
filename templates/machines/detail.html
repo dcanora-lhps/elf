@@ -42,19 +42,18 @@
         <button class="btn danger" type="submit">Cancel pending clean sync</button>
       </form>
     {% else %}
-      <p style="margin-top:0;">No clean sync queued. Queue one to force the client to drop synced state and re-fetch on next preflight.</p>
+      <p style="margin-top:0;">
+        Every sync is already a <span class="mono">CLEAN</span> sync: this machine drops its
+        synced rules and re-applies the full ruleset on each check-in. Queue a
+        <span class="mono">CLEAN_ALL</span> to also drop transitive and standalone-approved
+        rules on its next preflight.
+      </p>
       <form method="post" action="{% url 'machine-clean-sync' machine_id %}" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">{% csrf_token %}
-        <div><label style="display:block; font-size:12px; color:#555;">Type</label>
-          <select name="sync_type">
-            {% for v, label in clean_sync_choices %}
-              <option value="{{ v }}" {% if v == 'CLEAN_ALL' %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
+        <input type="hidden" name="sync_type" value="CLEAN_ALL">
         <div style="flex:1; min-width:240px;"><label style="display:block; font-size:12px; color:#555;">Reason (optional)</label>
           <input type="text" name="reason" placeholder="e.g. troubleshooting stale rules" style="width:100%;">
         </div>
-        <button class="btn" type="submit">Queue clean sync</button>
+        <button class="btn" type="submit">Queue CLEAN_ALL</button>
       </form>
     {% endif %}
   </div>
@@ -92,19 +91,20 @@
 {% if sessions %}
 <table>
 <thead>
-<tr><th>Started</th><th>Completed</th><th>Owner</th><th>Audience</th><th>Sync type</th><th>Mode</th><th>Rules sent</th><th>Events received</th></tr>
+<tr><th>Started</th><th>Completed</th><th>Owner</th><th>Audience</th><th>Sync type</th><th>Mode</th><th>Rules sent</th><th>Rules received</th><th>Rules applied</th></tr>
 </thead>
 <tbody>
 {% for s in sessions %}
 <tr>
   <td>{{ s.started_at|date:"Y-m-d H:i:s" }}</td>
-  <td>{% if s.completed_at %}{{ s.completed_at|date:"Y-m-d H:i:s" }}{% else %}<span class="pill unknown">in flight</span>{% endif %}</td>
+  <td>{% if s.completed_at %}{{ s.completed_at|date:"Y-m-d H:i:s" }}{% elif s.abandoned_at %}<span class="pill unknown" title="Superseded by a later sync — this one never reached postflight.">abandoned</span>{% else %}<span class="pill unknown">in flight</span>{% endif %}</td>
   <td>{{ s.machine_owner|default:s.primary_user|default:"—" }}</td>
   <td><span class="pill {{ s.audience }}">{{ s.get_audience_display }}</span></td>
-  <td>{{ s.sync_type }}{% if s.postflight_sync_type and s.postflight_sync_type != s.sync_type %} → {{ s.postflight_sync_type }}{% endif %}</td>
+  <td>{{ s.sync_type }}{% if s.postflight_sync_type and s.postflight_sync_type != s.sync_type %} → {{ s.postflight_sync_type }}{% endif %}{% if s.clean_flag_kept_reason %} <span class="pill unknown" title="{{ s.clean_flag_kept_reason }}">clean sync still pending</span>{% endif %}</td>
   <td>{{ s.client_mode }}</td>
   <td>{{ s.rules_sent }}</td>
   <td>{{ s.rules_received }}</td>
+  <td>{{ s.rules_processed }}</td>
 </tr>
 {% endfor %}
 </tbody>

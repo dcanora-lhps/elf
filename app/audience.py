@@ -1,4 +1,4 @@
-from .models import Audience, Rule
+from .models import AUDIENCE_RULE_FIELDS, Audience, Rule
 
 
 def audience_for(machine_id: str) -> str:
@@ -28,12 +28,17 @@ def is_recognized_machine_id(machine_id: str) -> bool:
     return "EMP" in mid or mid.startswith("MS-") or mid.startswith("US-")
 
 
+class UnknownAudience(Exception):
+    """Raised when a machine can't be mapped to one of the three rulesets.
+
+    Never returned as an empty ruleset: every sync is a clean sync, so an empty
+    download tells the client to drop every rule it holds. A routing bug must
+    fail the request instead.
+    """
+
+
 def rules_queryset_for(audience: str):
-    qs = Rule.objects.all().order_by("updated_at", "id")
-    if audience == Audience.TEACHER:
-        return qs.filter(applies_to_teachers=True)
-    if audience == Audience.MIDDLE_SCHOOL:
-        return qs.filter(applies_to_middle_school=True)
-    if audience == Audience.UPPER_SCHOOL:
-        return qs.filter(applies_to_upper_school=True)
-    return qs.none()
+    field = AUDIENCE_RULE_FIELDS.get(audience)
+    if not field:
+        raise UnknownAudience(audience)
+    return Rule.objects.filter(**{field: True}).order_by("updated_at", "id")

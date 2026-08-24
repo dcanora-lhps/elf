@@ -46,6 +46,29 @@ CLEAN_SYNC_TYPES = {
     SyncType.CLEAN_FILE_ACCESS_RULES,
 }
 
+# Every sync this server hands out is a clean one: the client drops the rules
+# it holds and applies exactly what this sync delivers, so un-scoping or
+# deleting a rule takes effect fleet-wide without the server having to track
+# what each machine already has. CLEAN rather than CLEAN_ALL so transitive and
+# standalone-approved rules survive, should either ever be enabled.
+DEFAULT_SYNC_TYPE = SyncType.CLEAN
+
+# Santa's sync client (SNTSyncType in SNTCommonEnums.h, identical in 2026.7 and
+# main) only models NORMAL, CLEAN and CLEAN_ALL. Anything else in the SyncType
+# enum is silently treated as NORMAL by the client and reported back as NORMAL
+# at postflight, so the request could never clear. CLEAN_ALL is the only clean
+# type worth queueing by hand, since CLEAN is what every sync already does.
+REQUESTABLE_CLEAN_SYNC_TYPES = (SyncType.CLEAN_ALL,)
+
+
+def normalize_sync_type(value):
+    """Canonical upper-case form of a client-reported sync_type string.
+
+    The protobuf enum carries deprecated lowercase aliases ("clean",
+    "clean_all") alongside the canonical names, so compare case-insensitively.
+    """
+    return str(value or "").strip().upper()
+
 
 class Audience(models.TextChoices):
     TEACHER = "teacher"
@@ -183,6 +206,14 @@ class Rule(models.Model):
         return f"{self.rule_type}:{self.policy}:{self.identifier[:40]}"
 
 
+# Rule audience flag for each Audience value.
+AUDIENCE_RULE_FIELDS = {
+    Audience.MIDDLE_SCHOOL: "applies_to_middle_school",
+    Audience.UPPER_SCHOOL: "applies_to_upper_school",
+    Audience.TEACHER: "applies_to_teachers",
+}
+
+
 class Event(models.Model):
     machine_id = models.CharField(max_length=255, db_index=True)
     audience = models.CharField(max_length=16, choices=Audience.choices, db_index=True)
@@ -309,11 +340,18 @@ class SyncSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     machine_id = models.CharField(max_length=255, db_index=True)
     audience = models.CharField(max_length=16, choices=Audience.choices)
-    sync_type = models.CharField(max_length=32, choices=SyncType.choices, default=SyncType.NORMAL)
+    sync_type = models.CharField(
+        max_length=32, choices=SyncType.choices, default=DEFAULT_SYNC_TYPE
+    )
     client_mode = models.CharField(max_length=16, choices=ClientMode.choices, default=ClientMode.MONITOR)
     batch_size = models.PositiveIntegerField(default=50)
     started_at = models.DateTimeField(auto_now_add=True, db_index=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # Set when a later preflight from the same machine supersedes this session.
+    # Santa runs one sync at a time, so a new preflight means the previous sync
+    # never reached postflight; without this, such rows read as "in flight"
+    # forever on the machine page.
+    abandoned_at = models.DateTimeField(null=True, blank=True)
     rules_sent = models.PositiveIntegerField(default=0)
     rules_received = models.PositiveIntegerField(default=0)
     rules_processed = models.PositiveIntegerField(default=0)
@@ -321,6 +359,12 @@ class SyncSession(models.Model):
     client_rules_hash = models.CharField(max_length=128, blank=True, default="")
     final_rules_hash = models.CharField(max_length=128, blank=True, default="")
     consumed_clean_flag = models.BooleanField(default=False)
+    # pk of the CleanSyncFlag this session consumed, so postflight clears that
+    # exact request and not one queued while the sync was in progress.
+    consumed_clean_flag_pk = models.IntegerField(null=True, blank=True)
+    # Why a consumed clean flag was left in place at postflight (empty when the
+    # flag was cleared or none was consumed). Surfaced on the machine page.
+    clean_flag_kept_reason = models.CharField(max_length=255, blank=True, default="")
     # Identity reported by the Santa client in preflight. machine_owner is the
     # configured Configuration Profile owner; primary_user is the logged-in user.
     machine_owner = models.CharField(max_length=255, blank=True, default="", db_index=True)
@@ -340,11 +384,30 @@ class SyncSession(models.Model):
 
 
 class SyncCursor(models.Model):
+    """A resume point in one session's rule download.
+
+    A cursor is a *position*, not a one-shot ticket: Santa retries a failed
+    request up to five times with the same cursor (see dataFromRequest in
+    SNTSyncStage.mm — a connection dropped mid-body is reported alongside the
+    200 and retried), so the same token must keep returning the same page.
+    Cursors live until the session ends, and the token for a given position is
+    allocated once, which is what makes a retry idempotent.
+    """
+
     token = models.CharField(max_length=64, primary_key=True)
     session = models.ForeignKey(SyncSession, on_delete=models.CASCADE, related_name="cursors")
-    last_rule_pk = models.BigIntegerField()
-    last_updated_at = models.DateTimeField()
+    # Position of the last rule handed out, in (updated_at, id) order.
+    last_rule_pk = models.BigIntegerField(default=0)
+    last_updated_at = models.DateTimeField(null=True, blank=True)
+    # Rows already delivered before this page, so rules_sent stays a count of
+    # distinct rules rather than a running total inflated by retries.
+    sent_before = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=["session", "last_rule_pk"], name="uniq_cursor_position"),
+        ]
 
 
 class ServerSettings(models.Model):
@@ -474,8 +537,13 @@ class CleanSyncFlag(models.Model):
     machine_id = models.CharField(max_length=255, unique=True)
     requested_sync_type = models.CharField(
         max_length=32,
-        choices=[(t.value, t.label) for t in SyncType if t.value in {s.value for s in (SyncType.CLEAN, SyncType.CLEAN_ALL, SyncType.CLEAN_STANDALONE, SyncType.CLEAN_RULES, SyncType.CLEAN_FILE_ACCESS_RULES)}],
-        default=SyncType.CLEAN,
+        choices=[(t.value, t.label) for t in REQUESTABLE_CLEAN_SYNC_TYPES],
+        default=SyncType.CLEAN_ALL,
+        help_text=(
+            "Every sync is already a CLEAN sync, which drops previously-synced "
+            "rules. Queue CLEAN_ALL to also drop transitive and "
+            "standalone-approved rules on the machine's next sync."
+        ),
     )
     reason = models.CharField(max_length=255, blank=True, default="")
     set_by = models.ForeignKey(

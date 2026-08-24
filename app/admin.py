@@ -107,6 +107,7 @@ class SyncSessionAdmin(admin.ModelAdmin):
         "client_mode",
         "started_at",
         "completed_at",
+        "abandoned_at",
         "rules_sent",
         "rules_received",
         "rules_processed",
@@ -121,8 +122,15 @@ class SyncSessionAdmin(admin.ModelAdmin):
 
 @admin.register(SyncCursor)
 class SyncCursorAdmin(admin.ModelAdmin):
-    list_display = ("token", "session", "created_at")
-    readonly_fields = ("token", "session", "last_rule_pk", "last_updated_at", "created_at")
+    list_display = ("token", "session", "last_rule_pk", "sent_before", "created_at")
+    readonly_fields = (
+        "token",
+        "session",
+        "last_rule_pk",
+        "last_updated_at",
+        "sent_before",
+        "created_at",
+    )
 
     def has_add_permission(self, request):
         return False
