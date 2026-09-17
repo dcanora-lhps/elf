@@ -44,31 +44,45 @@ from .models import (
 
 @login_required
 def dashboard(request):
+    """Fleet overview. Every panel here has to stay cheap: this is the page
+    people leave open, and Event/SyncSession both grow without bound.
+    """
     now = timezone.now()
     last_day = now - timedelta(days=1)
 
-    top_blocked = list(
+    # One grouped pass over the last day's blocks feeds the table *and* the
+    # summary counts. The database builds every group before applying a LIMIT,
+    # so fetching all of them instead of ten costs nothing extra server-side,
+    # and the result set is bounded by distinct apps rather than by events.
+    blocked_groups = list(
         Event.objects.filter(received_at__gte=last_day, decision__startswith="BLOCK_")
         .values("team_id", "signing_id", "file_bundle_id", "file_name")
         .annotate(count=Count("id"), last_seen=Max("received_at"))
-        .order_by("-count", "-last_seen")[:10]
+        .order_by("-count", "-last_seen")
+    )
+
+    # Four filtered counts in a single scan instead of four round trips.
+    rule_counts = Rule.objects.aggregate(
+        total=Count("id"),
+        middle_school=Count("id", filter=Q(applies_to_middle_school=True)),
+        upper_school=Count("id", filter=Q(applies_to_upper_school=True)),
+        teachers=Count("id", filter=Q(applies_to_teachers=True)),
     )
 
     ctx = {
-        "rule_count": Rule.objects.count(),
-        "rules_teachers": Rule.objects.filter(applies_to_teachers=True).count(),
-        "rules_middle_school": Rule.objects.filter(applies_to_middle_school=True).count(),
-        "rules_upper_school": Rule.objects.filter(applies_to_upper_school=True).count(),
-        "events_24h": Event.objects.filter(received_at__gte=last_day).count(),
-        "blocks_24h": Event.objects.filter(
-            received_at__gte=last_day, decision__startswith="BLOCK_"
-        ).count(),
+        "rule_count": rule_counts["total"],
+        "rules_teachers": rule_counts["teachers"],
+        "rules_middle_school": rule_counts["middle_school"],
+        "rules_upper_school": rule_counts["upper_school"],
+        "blocks_24h": sum(g["count"] for g in blocked_groups),
+        "blocked_apps_24h": len(blocked_groups),
         "unknown_count": UnknownMachine.objects.count(),
+        # Served by the syncsession_in_flight_idx partial index.
         "in_flight_sessions": SyncSession.objects.filter(
             completed_at__isnull=True, abandoned_at__isnull=True
         ).count(),
         "server_settings": ServerSettings.get(),
-        "top_blocked": top_blocked,
+        "top_blocked": blocked_groups[:10],
     }
     return render(request, "dashboard.html", ctx)
 
@@ -280,6 +294,26 @@ def _apply_event_filters(qs, filter_form, *, extended_search=False):
     return qs
 
 
+def _attach_machines(events):
+    """Annotate events with the roster row for their machine, in one query.
+
+    Event.machine_id is a bare string rather than a foreign key, so the roster
+    is fetched in a single batched lookup and stitched on here instead of
+    querying once per row. Events from a machine that has never synced get
+    machine=None and fall back to displaying the raw machine_id.
+    """
+    machines = {
+        m.machine_id: m
+        for m in Machine.objects.filter(
+            machine_id__in={e.machine_id for e in events}
+        ).only("machine_id", "machine_owner", "primary_user", "hostname")
+    }
+    for e in events:
+        e.machine = machines.get(e.machine_id)
+        e.machine_display = e.machine.display_name if e.machine else e.machine_id
+    return events
+
+
 class EventListView(LoginRequiredMixin, ListView):
     model = Event
     template_name = "events/list.html"
@@ -299,6 +333,7 @@ class EventListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        ctx["events"] = _attach_machines(list(ctx["events"]))
         ctx["filter_form"] = self.filter_form
         ctx["querystring"] = self.request.GET.urlencode()
         return ctx
@@ -409,6 +444,7 @@ class EventDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        ctx["machine"] = Machine.objects.filter(machine_id=self.object.machine_id).first()
         ctx["raw_pretty"] = json.dumps(self.object.raw, indent=2, sort_keys=True, default=str)
         return ctx
 

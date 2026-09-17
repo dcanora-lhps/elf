@@ -20,6 +20,7 @@
 <table>
 <thead>
 <tr>
+  <th style="width:34%">Note</th>
   <th>Identifier</th>
   <th><a class="sortable" href="?sort={% if cs == 'rule_type' %}-rule_type{% else %}rule_type{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Type{% if cs == 'rule_type' %} ▲{% elif cs == '-rule_type' %} ▼{% endif %}</a></th>
   <th><a class="sortable" href="?sort={% if cs == 'policy' %}-policy{% else %}policy{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Policy{% if cs == 'policy' %} ▲{% elif cs == '-policy' %} ▼{% endif %}</a></th>
@@ -33,11 +34,14 @@
 <tbody>
 {% for rule in rules %}
 <tr>
+  <td class="rule-note">
+    {% if rule.comment %}<span title="{{ rule.comment }}">{{ rule.comment|truncatechars:300 }}</span>
+    {% else %}<a class="no-note" href="{% url 'rule-edit' rule.pk %}">+ add a note</a>{% endif %}
+  </td>
   <td>
     <span class="mono" title="{{ rule.identifier }}">{{ rule.identifier|slice:":12" }}{% if rule.identifier|length > 12 %}…{% endif %}</span>
     <button type="button" class="copy-btn" data-copy="{{ rule.identifier }}" title="Copy full identifier">copy</button>
     {% if rule.custom_msg %}<br><small style="color:#666">{{ rule.custom_msg|truncatechars:80 }}</small>{% endif %}
-    {% if rule.comment %}<br><small style="color:#888;font-style:italic" title="{{ rule.comment }}">note: {{ rule.comment|truncatechars:90 }}</small>{% endif %}
   </td>
   <td>{{ rule.rule_type }}</td>
   <td>{% if rule.policy|slice:":5" == "BLOCK" or rule.policy == "SILENT_BLOCKLIST" %}<span class="pill block">{{ rule.policy }}</span>{% elif rule.policy|slice:":5" == "ALLOW" %}<span class="pill allow">{{ rule.policy }}</span>{% else %}<span class="pill">{{ rule.policy }}</span>{% endif %}</td>
