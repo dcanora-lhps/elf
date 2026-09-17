@@ -146,6 +146,44 @@ def _touch_machine(machine_id, audience, identity):
         )
 
 
+# Switches whose effect shows up as event volume rather than as an error, so
+# the only way to tell a server-side setting from a stale client-side one is to
+# see what the response actually carried.
+_LOGGED_PREFLIGHT_KEYS = (
+    "client_mode",
+    "sync_type",
+    "enableAllEventUpload",
+    "disableUnknownEventUpload",
+    "allowed_path_regex",
+)
+
+
+def _fmt_preflight_value(value):
+    # client_mode and sync_type are TextChoices, whose repr is the enum member
+    # name rather than the string that actually went out on the wire.
+    return repr(str(value)) if isinstance(value, str) else repr(value)
+
+
+def _log_preflight(machine_id, response):
+    """Record the preflight switches we handed this client.
+
+    Pair this with the eventupload log line: a machine uploading ALLOW_* events
+    other than ALLOW_UNKNOWN is a machine running with enableAllEventUpload on
+    (or matching a CEL rule that returned AUDIT), and this tells us whether the
+    last thing we told it was true or false. A key absent here was never sent,
+    which in Santa means the client keeps its previous sync-state value.
+    """
+    log.info(
+        "preflight %s: %s",
+        machine_id,
+        " ".join(
+            f"{k}={_fmt_preflight_value(response[k])}"
+            for k in _LOGGED_PREFLIGHT_KEYS
+            if k in response
+        ),
+    )
+
+
 @json_endpoint
 def preflight(request, body, machine_id):
     audience = audience_for(machine_id)
@@ -193,16 +231,21 @@ def preflight(request, body, machine_id):
         "enable_bundles": settings.SANTA_ENABLE_BUNDLES,
         "enable_transitive_rules": settings.SANTA_ENABLE_TRANSITIVE,
         "full_sync_interval": settings.SANTA_FULL_SYNC_INTERVAL_SECONDS,
-        # camelCase, not snake_case. These two fields carry no json_name in
-        # santa sync v1, so protobuf's canonical JSON name is the lowerCamelCase
-        # form -- unlike full_sync_interval next door, which declares one. Santa
-        # parses with ignore_unknown_fields=true (SNTSyncStage.mm), so the
-        # snake_case spelling was accepted with a 200 and silently discarded,
-        # leaving both flags at their client-side defaults.
+        # camelCase is the canonical JSON name: both fields are declared
+        # `optional bool` with no json_name in santa sync v1, unlike
+        # full_sync_interval next door, which declares one. Either spelling
+        # works on the wire -- protobuf's JSON parser accepts a field's
+        # original proto name as well as its json_name, and Santa uses the
+        # stock parser (JsonStringToMessage with ignore_unknown_fields=true,
+        # SNTSyncStage.mm). The earlier snake_case spelling was therefore NOT
+        # being dropped; if these flags look inert, the value in
+        # ServerSettings is the thing to check, not the key casing.
         #
-        # Sent unconditionally, including when false: Santa leaves a sync-state
-        # value untouched when the key is absent, so omitting these would let a
-        # stale client-side setting override the server indefinitely.
+        # Sent unconditionally, including when false: the fields are `optional`,
+        # so an explicit false still sets presence and Santa latches it into
+        # sync state (the has_*() guards in SNTSyncPreflight.mm), where it wins
+        # over the configuration profile. Omitting the key instead leaves
+        # whatever the client last latched onto.
         "enableAllEventUpload": server_settings.enable_all_event_upload,
         "disableUnknownEventUpload": server_settings.disable_unknown_event_upload,
     }
@@ -212,6 +255,7 @@ def preflight(request, body, machine_id):
         v = getattr(server_settings, src) or ""
         if v:
             response[dst] = v
+    _log_preflight(machine_id, response)
     return JsonResponse(response)
 
 
