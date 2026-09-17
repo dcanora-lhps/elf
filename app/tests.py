@@ -92,6 +92,10 @@ class EventUploadSettingsTests(SyncTestCase):
     key we omit keeps whatever the client last latched onto, so a machine that
     ever received DisableUnknownEventUpload=true would stop uploading
     ALLOW_UNKNOWN events permanently, with no way for this server to undo it.
+
+    The keys are asserted in camelCase because that is their canonical JSON
+    name, not because the snake_case spelling failed to parse -- protobuf
+    accepts either, so casing has never been what makes these flags land.
     """
 
     def test_preflight_always_sends_both_keys(self):
@@ -123,6 +127,36 @@ class EventUploadSettingsTests(SyncTestCase):
         body = self.json("preflight", "US-1")
         self.assertIs(body["disableUnknownEventUpload"], True)
         self.assertIs(body["enableAllEventUpload"], True)
+
+
+class PreflightLoggingTests(SyncTestCase):
+    """Preflight must say on the record which event-upload switches it sent.
+
+    These switches only show up as event volume, never as an error, so without
+    a log line there is no way to tell "the server sent false and the client
+    ignored it" from "the server has been sending true all along".
+    """
+
+    def preflight_log(self, machine_id="US-1"):
+        with self.assertLogs("santa.sync", level="INFO") as logs:
+            self.json("preflight", machine_id)
+        return "\n".join(logs.output)
+
+    def test_logs_event_upload_switches(self):
+        line = self.preflight_log()
+        self.assertIn("enableAllEventUpload=False", line)
+        self.assertIn("disableUnknownEventUpload=False", line)
+
+    def test_logs_enabled_state(self):
+        settings_obj = ServerSettings.get()
+        settings_obj.enable_all_event_upload = True
+        settings_obj.save()
+        self.assertIn("enableAllEventUpload=True", self.preflight_log())
+
+    def test_logs_machine_id_and_mode(self):
+        line = self.preflight_log()
+        self.assertIn("preflight US-1", line)
+        self.assertIn("client_mode=", line)
 
 
 class EventIngestTests(SyncTestCase):
