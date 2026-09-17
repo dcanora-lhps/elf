@@ -10,10 +10,15 @@ silently short, and it must never be silently repeated.
 """
 
 import json
+from datetime import timedelta
+from io import StringIO
 from unittest import mock
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from .audience import UnknownAudience, rules_queryset_for
 from .models import (
@@ -21,6 +26,7 @@ from .models import (
     Event,
     CleanSyncFlag,
     ClientMode,
+    Machine,
     Policy,
     Rule,
     RuleType,
@@ -535,3 +541,114 @@ class MachineViewTests(SyncTestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.context["in_flight_sessions"], 1)
+
+
+class PurgeSyncSessionsTests(SyncTestCase):
+    """Retention for the sync session log.
+
+    The command's whole risk surface is which rows it picks, so these fix the
+    boundary (older than the window, newer than it), the cursor cascade, and
+    the refusal to accept a window short enough to race a live sync.
+    """
+
+    def age(self, session, days):
+        """Backdate a session. started_at is auto_now_add, so create() can't."""
+        SyncSession.objects.filter(pk=session.pk).update(
+            started_at=timezone.now() - timedelta(days=days)
+        )
+        return session
+
+    def purge(self, **kwargs):
+        out = StringIO()
+        call_command("purge_sync_sessions", stdout=out, **kwargs)
+        return out.getvalue()
+
+    def test_sessions_past_the_window_go_and_recent_ones_stay(self):
+        self.json("preflight", "US-1")
+        old = self.age(self.session("US-1"), days=31)
+        self.json("preflight", "US-2")
+        recent = self.session("US-2")
+
+        self.purge(days=30)
+
+        self.assertFalse(SyncSession.objects.filter(pk=old.pk).exists())
+        self.assertTrue(SyncSession.objects.filter(pk=recent.pk).exists())
+
+    def test_a_session_inside_the_window_survives_to_the_last_day(self):
+        self.json("preflight", "US-1")
+        self.age(self.session("US-1"), days=29)
+
+        self.purge(days=30)
+
+        self.assertEqual(SyncSession.objects.count(), 1)
+
+    def test_cursors_of_a_purged_session_go_with_it(self):
+        # More rules than the 5-rule test batch size, so the first page hands
+        # back a cursor, and no postflight, so the cursor survives the sync --
+        # postflight is what normally clears them.
+        for n in range(7):
+            self.make_rule(f"rule-{n}", applies_to_upper_school=True)
+        self.json("preflight", "US-1")
+        self.json("ruledownload", "US-1")
+        session = self.session("US-1")
+        self.assertTrue(SyncCursor.objects.filter(session=session).exists())
+        self.age(session, days=31)
+
+        output = self.purge(days=30)
+
+        self.assertFalse(SyncSession.objects.exists())
+        self.assertFalse(SyncCursor.objects.exists())
+        self.assertIn("1 cursors", output)
+
+    def test_an_old_session_left_open_is_purged_too(self):
+        """A machine that never came back leaves a session open forever, and
+        those rows are what inflate the dashboard's in-flight count."""
+        self.json("preflight", "US-1")
+        session = self.session("US-1")
+        self.assertIsNone(session.completed_at)
+        self.assertIsNone(session.abandoned_at)
+        self.age(session, days=31)
+
+        self.purge(days=30)
+
+        self.assertFalse(SyncSession.objects.exists())
+
+    def test_the_machine_roster_is_untouched_by_a_purge(self):
+        """Machine carries the durable counters, so culling the log must not
+        disturb the Machines tab."""
+        self.json("preflight", "US-1")
+        self.json("postflight", "US-1", {"rules_received": 3, "rules_processed": 3})
+        self.age(self.session("US-1"), days=31)
+        before = Machine.objects.get(machine_id="US-1")
+
+        self.purge(days=30)
+
+        after = Machine.objects.get(machine_id="US-1")
+        self.assertEqual(after.sync_count, before.sync_count)
+        self.assertEqual(after.last_completed, before.last_completed)
+        self.assertFalse(SyncSession.objects.exists())
+
+    def test_batching_deletes_every_matching_row(self):
+        for n in range(5):
+            self.json("preflight", f"US-{n}")
+            self.age(self.session(f"US-{n}"), days=31)
+
+        output = self.purge(days=30, batch_size=2)
+
+        self.assertFalse(SyncSession.objects.exists())
+        self.assertIn("Deleted 5 sessions", output)
+
+    def test_dry_run_reports_without_deleting(self):
+        self.json("preflight", "US-1")
+        self.age(self.session("US-1"), days=31)
+
+        output = self.purge(days=30, dry_run=True)
+
+        self.assertIn("Would delete 1 sessions", output)
+        self.assertEqual(SyncSession.objects.count(), 1)
+
+    def test_a_window_under_a_day_is_refused(self):
+        """Under a day the cutoff starts to overlap a sync in progress, whose
+        session a ruledownload still needs."""
+        with self.assertRaises(CommandError):
+            self.purge(days=0)

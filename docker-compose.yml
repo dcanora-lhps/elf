@@ -48,6 +48,30 @@ services:
     expose:
       - "8000"
 
+  # Nightly retention for SyncSession. Same image as web, different entrypoint:
+  # docker/purge-loop.sh sleeps until PURGE_AT and runs the purge_sync_sessions
+  # management command. Waits on web's healthcheck so it never races migrations.
+  purge:
+    build: .
+    image: elf-santa-sync:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    entrypoint: ["/usr/bin/tini", "--", "/app/docker/purge-loop.sh"]
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
+      DJANGO_DEBUG: "0"
+      DATABASE_URL: postgres://${POSTGRES_USER:-elf}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-elf}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      PURGE_RETENTION_DAYS: ${PURGE_RETENTION_DAYS:-30}
+      # Wall-clock time of the nightly run, in TZ below. Pick an off-peak hour;
+      # the purge competes with syncs for the same database.
+      PURGE_AT: ${PURGE_AT:-03:15}
+      TZ: ${TZ:-UTC}
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
