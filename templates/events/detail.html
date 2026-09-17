@@ -6,7 +6,10 @@
 
 <dl class="dl">
   <dt>Received</dt><dd>{{ event.received_at }}</dd>
-  <dt>Machine</dt><dd class="mono">{{ event.machine_id }} <span class="pill {{ event.audience }}">{{ event.get_audience_display }}</span></dd>
+  <dt>Owner</dt>
+  <dd>{% if machine %}{{ machine.display_name }}{% if machine.primary_user and machine.primary_user != machine.machine_owner %} <small style="color:#666">(logged in: {{ machine.primary_user }})</small>{% endif %}{% else %}<span style="color:#666">unknown — this machine has no roster entry</span>{% endif %}</dd>
+  <dt>Machine</dt>
+  <dd><a class="mono" href="{% url 'machine-detail' event.machine_id %}">{{ event.machine_id }}</a> <span class="pill {{ event.audience }}">{{ event.get_audience_display }}</span></dd>
   <dt>Decision</dt><dd>{{ event.decision }}</dd>
   <dt>Execution time</dt><dd>{{ event.execution_time|default:"—" }}</dd>
   <dt>Executing user</dt><dd>{{ event.executing_user|default:"—" }}</dd>

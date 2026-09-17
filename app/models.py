@@ -318,8 +318,17 @@ class Machine(models.Model):
             models.Index(fields=["-sync_count"]),
         ]
 
+    @property
+    def display_name(self):
+        """Human-friendly label for this machine, best identity first.
+
+        Used wherever a machine is shown to an operator (events list, event
+        detail); falls back to the machine_id so the label is never empty.
+        """
+        return self.machine_owner or self.primary_user or self.hostname or self.machine_id
+
     def __str__(self):
-        return self.machine_owner or self.hostname or self.machine_id
+        return self.display_name
 
 
 class UnknownMachine(models.Model):
@@ -380,6 +389,16 @@ class SyncSession(models.Model):
         ordering = ["-started_at"]
         indexes = [
             models.Index(fields=["machine_id", "completed_at"]),
+            # The dashboard counts sessions that never reached postflight and
+            # were never superseded. SyncSession grows by one row per machine
+            # per sync forever, so without a partial index that count is a full
+            # table scan; with one it reads an index holding only the handful of
+            # rows that actually match.
+            models.Index(
+                fields=["-started_at"],
+                condition=Q(completed_at__isnull=True, abandoned_at__isnull=True),
+                name="syncsession_in_flight_idx",
+            ),
         ]
 
 

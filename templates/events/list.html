@@ -27,7 +27,7 @@
 <table>
 <thead>
 <tr>
-  <th>Received</th><th>Audience</th><th>Machine</th><th>Decision</th><th>File</th><th>Signing ID</th><th>Team ID</th><th>User</th>
+  <th>Received</th><th>Audience</th><th>Owner</th><th>Decision</th><th>File</th><th>Signing ID</th><th>Team ID</th><th>User</th>
 </tr>
 </thead>
 <tbody>
@@ -35,7 +35,7 @@
 <tr>
   <td><a href="{% url 'event-detail' e.pk %}">{{ e.received_at|date:"Y-m-d H:i:s" }}</a></td>
   <td><span class="pill {{ e.audience }}">{{ e.get_audience_display }}</span></td>
-  <td class="mono">{{ e.machine_id|truncatechars:32 }}</td>
+  <td><a href="{% url 'machine-detail' e.machine_id %}" title="{{ e.machine_id }}">{{ e.machine_display|truncatechars:32 }}</a></td>
   <td>{% if e.decision|slice:":5" == "BLOCK" %}<span class="pill block">{{ e.decision }}</span>{% elif e.decision|slice:":5" == "ALLOW" %}<span class="pill allow">{{ e.decision }}</span>{% else %}<span class="pill">{{ e.decision }}</span>{% endif %}</td>
   <td>{{ e.file_name|default:"—" }}{% if e.file_bundle_name %}<br><small style="color:#666">{{ e.file_bundle_name }}</small>{% endif %}</td>
   <td class="mono" title="{{ e.signing_id }}">{% if e.signing_id %}{{ e.signing_id|truncatechars:36 }} <a href="{% url 'rule-create' %}?rule_type=SIGNINGID&amp;identifier={{ e.signing_id|urlencode }}" title="Make a rule for this Signing ID" style="font-size:11px">+ rule</a>{% else %}—{% endif %}</td>

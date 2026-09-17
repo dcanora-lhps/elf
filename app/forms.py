@@ -88,9 +88,18 @@ class RuleForm(forms.ModelForm):
             "applies_to_teachers",
             "comment",
         ]
+        labels = {
+            "comment": "Note",
+        }
         widgets = {
             "cel_expr": forms.Textarea(attrs={"rows": 3}),
-            "comment": forms.Textarea(attrs={"rows": 3}),
+            "comment": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "cols": 60,
+                    "placeholder": "Why this rule exists — the next admin reading it will start here.",
+                }
+            ),
             "custom_msg": forms.TextInput(attrs={"size": 60}),
             "custom_url": forms.TextInput(attrs={"size": 60}),
             "identifier": forms.TextInput(attrs={"size": 60}),
@@ -98,6 +107,7 @@ class RuleForm(forms.ModelForm):
 
     # Visual sections for the form template. Each tuple: (section_title, [field_names]).
     SECTIONS = (
+        ("Note", ("comment",)),
         ("Match", ("identifier", "rule_type", "policy")),
         ("Block dialog", ("custom_msg", "custom_url", "notification_app_name")),
         ("CEL expression", ("cel_expr",)),
@@ -105,7 +115,6 @@ class RuleForm(forms.ModelForm):
             "Audience",
             ("applies_to_middle_school", "applies_to_upper_school", "applies_to_teachers"),
         ),
-        ("Notes", ("comment",)),
     )
 
     def sectioned_fields(self):
