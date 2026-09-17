@@ -468,6 +468,30 @@ class ServerSettings(models.Model):
             "effectively bypasses Santa, so keep it tight."
         ),
     )
+    # Event-upload switches, emitted on every preflight even when false.
+    # Santa only overwrites a sync-state value when the key is present in the
+    # response (the has_*() guards in SNTSyncPreflight.mm), and sync state takes
+    # precedence over the configuration profile in SNTConfigurator. A key this
+    # server omits therefore keeps whatever value the client last latched onto,
+    # with no way for us to take it back — including a stale
+    # DisableUnknownEventUpload that silently suppresses ALLOW_UNKNOWN forever.
+    disable_unknown_event_upload = models.BooleanField(
+        default=False,
+        help_text=(
+            "When on, clients stop uploading ALLOW_UNKNOWN events — unknown binaries "
+            "allowed because the machine is in MONITOR mode. Normally leave off: those "
+            "events are how new software gets noticed and turned into rules."
+        ),
+    )
+    enable_all_event_upload = models.BooleanField(
+        default=False,
+        help_text=(
+            "When on, clients upload every execution event, including ones already "
+            "allowed by a rule. Useful for a short debugging window; expect a large "
+            "jump in event volume."
+        ),
+    )
+
     # Block-dialog customization pushed via preflight. Per-rule custom_msg/custom_url
     # still wins when set on a matching Rule.
     event_detail_url = models.CharField(

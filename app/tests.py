@@ -18,6 +18,7 @@ from django.test import TestCase, override_settings
 from .audience import UnknownAudience, rules_queryset_for
 from .models import (
     Audience,
+    Event,
     CleanSyncFlag,
     ClientMode,
     Policy,
@@ -81,6 +82,93 @@ class SyncTestCase(TestCase):
     def login(self):
         User.objects.create_superuser("admin", "a@example.com", "pw")
         self.client.force_login(User.objects.get(username="admin"))
+
+
+class EventUploadSettingsTests(SyncTestCase):
+    """Preflight must always state both event-upload switches.
+
+    Santa only overwrites a sync-state value when the key is present in the
+    preflight response, and sync state outranks the configuration profile. A
+    key we omit keeps whatever the client last latched onto, so a machine that
+    ever received DisableUnknownEventUpload=true would stop uploading
+    ALLOW_UNKNOWN events permanently, with no way for this server to undo it.
+    """
+
+    def test_preflight_always_sends_both_keys(self):
+        body = self.json("preflight", "US-1")
+        self.assertIn("disable_unknown_event_upload", body)
+        self.assertIn("enable_all_event_upload", body)
+
+    def test_defaults_keep_unknown_events_flowing(self):
+        body = self.json("preflight", "US-1")
+        self.assertIs(body["disable_unknown_event_upload"], False)
+        self.assertIs(body["enable_all_event_upload"], False)
+
+    def test_false_is_sent_explicitly_not_omitted(self):
+        # The whole point: a false value must travel as false, never as an
+        # absent key, or it cannot clear a stale client-side setting.
+        settings_obj = ServerSettings.get()
+        settings_obj.disable_unknown_event_upload = False
+        settings_obj.enable_all_event_upload = False
+        settings_obj.save()
+        raw = json.loads(self.post("preflight", "US-1").content)
+        self.assertEqual(raw["disable_unknown_event_upload"], False)
+        self.assertEqual(raw["enable_all_event_upload"], False)
+
+    def test_settings_are_reflected_when_enabled(self):
+        settings_obj = ServerSettings.get()
+        settings_obj.disable_unknown_event_upload = True
+        settings_obj.enable_all_event_upload = True
+        settings_obj.save()
+        body = self.json("preflight", "US-1")
+        self.assertIs(body["disable_unknown_event_upload"], True)
+        self.assertIs(body["enable_all_event_upload"], True)
+
+
+class EventIngestTests(SyncTestCase):
+    """Decoding one uploaded event into an Event row.
+
+    Santa 2026.5+ sends a mix of wire spellings in a single event, and Postgres
+    rejects an overlong value rather than truncating it — with bulk_create that
+    would fail the whole batch and lose every event in the upload.
+    """
+
+    def upload(self, event):
+        self.json("eventupload", "US-1", {"events": [event]})
+        return Event.objects.latest("received_at")
+
+    def test_camel_case_fields_are_accepted(self):
+        e = self.upload(
+            {
+                "decision": "ALLOW_UNKNOWN",
+                "csFlags": 637631233,
+                "signingTime": 1785586260,
+                "signingStatus": "SIGNING_STATUS_PRODUCTION",
+                "entitlementInfo": {"entitlementsFiltered": True},
+            }
+        )
+        self.assertEqual(e.cs_flags, 637631233)
+        self.assertEqual(e.signing_status, "SIGNING_STATUS_PRODUCTION")
+        self.assertIsNotNone(e.signing_time)
+        self.assertEqual(e.entitlement_info, {"entitlementsFiltered": True})
+
+    def test_snake_case_still_wins(self):
+        e = self.upload({"decision": "BLOCK_BINARY", "cs_flags": 7, "csFlags": 9})
+        self.assertEqual(e.cs_flags, 7)
+
+    def test_overlong_values_are_truncated_not_rejected(self):
+        e = self.upload({"decision": "ALLOW_UNKNOWN", "file_path": "/x" * 2000})
+        self.assertEqual(len(e.file_path), 1024)
+
+    def test_raw_payload_is_kept_untruncated(self):
+        path = "/x" * 2000
+        e = self.upload({"decision": "ALLOW_UNKNOWN", "file_path": path})
+        self.assertEqual(e.raw["file_path"], path)
+
+    def test_allow_unknown_round_trips(self):
+        e = self.upload({"decision": "ALLOW_UNKNOWN", "file_name": "FileZilla"})
+        self.assertEqual(e.decision, "ALLOW_UNKNOWN")
+        self.assertEqual(e.file_name, "FileZilla")
 
 
 class CleanSyncTests(SyncTestCase):

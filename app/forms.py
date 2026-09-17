@@ -13,6 +13,8 @@ class ServerSettingsForm(forms.ModelForm):
             "teacher_client_mode",
             "monitor_only",
             "allowed_path_regex",
+            "disable_unknown_event_upload",
+            "enable_all_event_upload",
             "event_detail_url",
             "event_detail_text",
         ]
@@ -32,6 +34,10 @@ class ServerSettingsForm(forms.ModelForm):
                 "upper_school_client_mode",
                 "teacher_client_mode",
             ),
+        ),
+        (
+            "Event upload",
+            ("disable_unknown_event_upload", "enable_all_event_upload"),
         ),
         ("Block dialog defaults", ("event_detail_url", "event_detail_text")),
     )

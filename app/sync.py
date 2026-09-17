@@ -193,6 +193,11 @@ def preflight(request, body, machine_id):
         "enable_bundles": settings.SANTA_ENABLE_BUNDLES,
         "enable_transitive_rules": settings.SANTA_ENABLE_TRANSITIVE,
         "full_sync_interval": settings.SANTA_FULL_SYNC_INTERVAL_SECONDS,
+        # Sent unconditionally, including when false: Santa leaves a sync-state
+        # value untouched when the key is absent, so omitting these would let a
+        # stale client-side setting override the server indefinitely.
+        "enable_all_event_upload": server_settings.enable_all_event_upload,
+        "disable_unknown_event_upload": server_settings.disable_unknown_event_upload,
     }
     if server_settings.allowed_path_regex:
         response["allowed_path_regex"] = server_settings.allowed_path_regex
@@ -240,23 +245,63 @@ _EVENT_EPOCH_FIELDS = ("execution_time", "quarantine_timestamp", "secure_signing
 _EVENT_LIST_FIELDS = ("logged_in_users", "current_sessions", "signing_chain")
 
 
+def _camel_case(name):
+    head, *rest = name.split("_")
+    return head + "".join(part.title() for part in rest)
+
+
+# Santa's sync v1 proto gives most fields an explicit snake_case json_name, but
+# newer additions (cs_flags, signing_time, signing_status, entitlement_info)
+# have none, so protobuf's canonical JSON mapping camel-cases them on the wire.
+# Accept either spelling: a 2026.5+ client sends a mix of the two in one event,
+# and the unrecognised half was being stored as an empty column.
+_EVENT_WIRE_ALIASES = {
+    f: _camel_case(f)
+    for f in (
+        _EVENT_DIRECT_FIELDS
+        + _EVENT_INT_FIELDS
+        + _EVENT_EPOCH_FIELDS
+        + _EVENT_LIST_FIELDS
+        + ("entitlement_info", "static_rule")
+    )
+}
+
+# Column widths, read off the model so they cannot drift. Postgres rejects an
+# overlong value outright rather than truncating, and these rows are written
+# with bulk_create, so one oversized file_path would fail the whole batch and
+# lose every event in that upload. Clamp on the way in, as preflight already
+# does with the identity fields. `raw` keeps the untruncated payload.
+_EVENT_MAX_LENGTHS = {
+    f.name: f.max_length for f in Event._meta.get_fields() if getattr(f, "max_length", None)
+}
+
+
+def _raw_get(raw, field):
+    """Read one event field, tolerating either wire spelling."""
+    if field in raw:
+        return raw[field]
+    return raw.get(_EVENT_WIRE_ALIASES.get(field, field))
+
+
 def _build_event(machine_id, audience, raw):
     if not isinstance(raw, dict):
         return None
-    fields = {f: (raw.get(f) or "") for f in _EVENT_DIRECT_FIELDS}
+    fields = {}
+    for f in _EVENT_DIRECT_FIELDS:
+        value = str(_raw_get(raw, f) or "")
+        limit = _EVENT_MAX_LENGTHS.get(f)
+        fields[f] = value[:limit] if limit else value
     for f in _EVENT_INT_FIELDS:
-        v = raw.get(f)
-        fields[f] = v if isinstance(v, (int, float)) else None
-        if fields[f] is not None:
-            fields[f] = int(fields[f])
+        v = _raw_get(raw, f)
+        fields[f] = int(v) if isinstance(v, (int, float)) else None
     for f in _EVENT_EPOCH_FIELDS:
-        fields[f] = _epoch_to_dt(raw.get(f))
+        fields[f] = _epoch_to_dt(_raw_get(raw, f))
     for f in _EVENT_LIST_FIELDS:
-        v = raw.get(f)
+        v = _raw_get(raw, f)
         fields[f] = v if isinstance(v, list) else []
-    ent = raw.get("entitlement_info")
+    ent = _raw_get(raw, "entitlement_info")
     fields["entitlement_info"] = ent if isinstance(ent, dict) else {}
-    fields["static_rule"] = bool(raw.get("static_rule"))
+    fields["static_rule"] = bool(_raw_get(raw, "static_rule"))
     return Event(
         machine_id=machine_id,
         audience=audience,
