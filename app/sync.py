@@ -310,21 +310,67 @@ def _build_event(machine_id, audience, raw):
     )
 
 
+# Top-level keys defined by EventUploadRequest in Santa's sync v1 proto.
+# Anything else means the client is sending a shape we do not decode.
+_EVENT_UPLOAD_KEYS = frozenset(
+    {"events", "audit_events", "file_access_events", "machine_id"}
+)
+_LOGGED_DECISIONS = 20
+
+
+def _log_event_upload(machine_id, body, events_in, audit_in, faa_in):
+    """Record what an upload actually carried.
+
+    Diagnostic, and deliberately unconditional. Santa treats an upload as
+    delivered the moment it gets a 200 and drops those events from its local
+    queue (databaseRemoveEventsWithIDs in SNTSyncEventUpload.mm, which runs for
+    every enumerated event "even if not uploaded"), so anything we quietly
+    ignore is gone for good: no retry, no trace, and the client's pending count
+    still falls to zero. The stage only runs when the client has at least one
+    pending event, so an empty `events` list here means the client dropped them
+    all during proto conversion rather than that nothing happened.
+    """
+    log.info(
+        "eventupload %s: keys=%s events=%d audit=%d file_access=%d decisions=%s",
+        machine_id,
+        sorted(body),
+        len(events_in),
+        len(audit_in),
+        len(faa_in),
+        [e.get("decision") for e in events_in if isinstance(e, dict)][:_LOGGED_DECISIONS],
+    )
+    unexpected = sorted(set(body) - _EVENT_UPLOAD_KEYS)
+    if unexpected:
+        log.warning("eventupload %s: unrecognised top-level keys %s", machine_id, unexpected)
+    if not (events_in or audit_in or faa_in):
+        log.warning(
+            "eventupload %s: client had events pending but sent none", machine_id
+        )
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else []
+
+
 @json_endpoint
 def eventupload(request, body, machine_id):
     audience = audience_for(machine_id)
     if not is_recognized_machine_id(machine_id):
         _track_unknown(machine_id)
 
-    events_in = body.get("events") or []
-    if isinstance(events_in, list) and events_in:
+    events_in = _as_list(body.get("events"))
+    audit_in = _as_list(body.get("audit_events"))
+    faa_in = _as_list(body.get("file_access_events"))
+    _log_event_upload(machine_id, body, events_in, audit_in, faa_in)
+
+    if events_in:
         rows = [_build_event(machine_id, audience, e) for e in events_in]
         rows = [r for r in rows if r is not None]
         if rows:
             Event.objects.bulk_create(rows, batch_size=200)
 
     aux_rows = []
-    for ae in body.get("audit_events") or []:
+    for ae in audit_in:
         if isinstance(ae, dict):
             aux_rows.append(
                 AuxiliaryEvent(
@@ -334,7 +380,7 @@ def eventupload(request, body, machine_id):
                     payload=ae,
                 )
             )
-    for fe in body.get("file_access_events") or []:
+    for fe in faa_in:
         if isinstance(fe, dict):
             aux_rows.append(
                 AuxiliaryEvent(

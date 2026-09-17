@@ -171,6 +171,40 @@ class EventIngestTests(SyncTestCase):
         self.assertEqual(e.file_name, "FileZilla")
 
 
+class EventUploadLoggingTests(SyncTestCase):
+    """The upload path must never accept events silently.
+
+    A 200 tells Santa the events are delivered and it drops them from its local
+    queue, so anything we ignore without a log line is unrecoverable.
+    """
+
+    def test_logs_keys_and_decisions(self):
+        with self.assertLogs("santa.sync", level="INFO") as logs:
+            self.json("eventupload", "US-1", {"events": [{"decision": "ALLOW_UNKNOWN"}]})
+        line = "\n".join(logs.output)
+        self.assertIn("events=1", line)
+        self.assertIn("ALLOW_UNKNOWN", line)
+
+    def test_warns_when_client_sends_an_empty_batch(self):
+        with self.assertLogs("santa.sync", level="WARNING") as logs:
+            self.json("eventupload", "US-1", {"events": []})
+        self.assertIn("sent none", "\n".join(logs.output))
+
+    def test_warns_on_unrecognised_top_level_keys(self):
+        with self.assertLogs("santa.sync", level="WARNING") as logs:
+            self.json("eventupload", "US-1", {"execution_events": [{"decision": "X"}]})
+        self.assertIn("execution_events", "\n".join(logs.output))
+
+    def test_known_keys_do_not_warn(self):
+        with self.assertLogs("santa.sync", level="INFO") as logs:
+            self.json(
+                "eventupload",
+                "US-1",
+                {"machine_id": "US-1", "events": [{"decision": "BLOCK_BINARY"}]},
+            )
+        self.assertNotIn("unrecognised", "\n".join(logs.output))
+
+
 class CleanSyncTests(SyncTestCase):
     """Every sync is clean, so scope changes need no server-side bookkeeping."""
 
