@@ -96,13 +96,13 @@ class EventUploadSettingsTests(SyncTestCase):
 
     def test_preflight_always_sends_both_keys(self):
         body = self.json("preflight", "US-1")
-        self.assertIn("disable_unknown_event_upload", body)
-        self.assertIn("enable_all_event_upload", body)
+        self.assertIn("disableUnknownEventUpload", body)
+        self.assertIn("enableAllEventUpload", body)
 
     def test_defaults_keep_unknown_events_flowing(self):
         body = self.json("preflight", "US-1")
-        self.assertIs(body["disable_unknown_event_upload"], False)
-        self.assertIs(body["enable_all_event_upload"], False)
+        self.assertIs(body["disableUnknownEventUpload"], False)
+        self.assertIs(body["enableAllEventUpload"], False)
 
     def test_false_is_sent_explicitly_not_omitted(self):
         # The whole point: a false value must travel as false, never as an
@@ -112,8 +112,8 @@ class EventUploadSettingsTests(SyncTestCase):
         settings_obj.enable_all_event_upload = False
         settings_obj.save()
         raw = json.loads(self.post("preflight", "US-1").content)
-        self.assertEqual(raw["disable_unknown_event_upload"], False)
-        self.assertEqual(raw["enable_all_event_upload"], False)
+        self.assertEqual(raw["disableUnknownEventUpload"], False)
+        self.assertEqual(raw["enableAllEventUpload"], False)
 
     def test_settings_are_reflected_when_enabled(self):
         settings_obj = ServerSettings.get()
@@ -121,8 +121,8 @@ class EventUploadSettingsTests(SyncTestCase):
         settings_obj.enable_all_event_upload = True
         settings_obj.save()
         body = self.json("preflight", "US-1")
-        self.assertIs(body["disable_unknown_event_upload"], True)
-        self.assertIs(body["enable_all_event_upload"], True)
+        self.assertIs(body["disableUnknownEventUpload"], True)
+        self.assertIs(body["enableAllEventUpload"], True)
 
 
 class EventIngestTests(SyncTestCase):

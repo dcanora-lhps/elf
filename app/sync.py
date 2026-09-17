@@ -193,11 +193,18 @@ def preflight(request, body, machine_id):
         "enable_bundles": settings.SANTA_ENABLE_BUNDLES,
         "enable_transitive_rules": settings.SANTA_ENABLE_TRANSITIVE,
         "full_sync_interval": settings.SANTA_FULL_SYNC_INTERVAL_SECONDS,
+        # camelCase, not snake_case. These two fields carry no json_name in
+        # santa sync v1, so protobuf's canonical JSON name is the lowerCamelCase
+        # form -- unlike full_sync_interval next door, which declares one. Santa
+        # parses with ignore_unknown_fields=true (SNTSyncStage.mm), so the
+        # snake_case spelling was accepted with a 200 and silently discarded,
+        # leaving both flags at their client-side defaults.
+        #
         # Sent unconditionally, including when false: Santa leaves a sync-state
         # value untouched when the key is absent, so omitting these would let a
         # stale client-side setting override the server indefinitely.
-        "enable_all_event_upload": server_settings.enable_all_event_upload,
-        "disable_unknown_event_upload": server_settings.disable_unknown_event_upload,
+        "enableAllEventUpload": server_settings.enable_all_event_upload,
+        "disableUnknownEventUpload": server_settings.disable_unknown_event_upload,
     }
     if server_settings.allowed_path_regex:
         response["allowed_path_regex"] = server_settings.allowed_path_regex
