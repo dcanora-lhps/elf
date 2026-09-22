@@ -21,6 +21,7 @@ from .models import (
     Event,
     CleanSyncFlag,
     ClientMode,
+    MachinePolicy,
     Policy,
     Rule,
     RuleType,
@@ -560,6 +561,35 @@ class MachineViewTests(SyncTestCase):
         response = self.client.get("/machines/")
 
         self.assertContains(response, "Queue CLEAN_ALL for all")
+
+    def test_machine_list_can_show_only_machines_with_a_client_mode_override(self):
+        self.login()
+        self.json("preflight", "US-1")
+        self.json("preflight", "US-2")
+        self.json("preflight", "US-3")
+        MachinePolicy.objects.create(machine_id="US-1", client_mode=ClientMode.LOCKDOWN)
+        # A policy row with a blank client_mode defers to the global default, so
+        # it is not an override.
+        MachinePolicy.objects.create(machine_id="US-2", client_mode="")
+
+        response = self.client.get("/machines/", {"overridden": "1"})
+
+        self.assertEqual(
+            [m.machine_id for m in response.context["machines"]], ["US-1"]
+        )
+
+    def test_machine_list_shows_every_machine_without_the_override_filter(self):
+        self.login()
+        self.json("preflight", "US-1")
+        self.json("preflight", "US-2")
+        MachinePolicy.objects.create(machine_id="US-1", client_mode=ClientMode.LOCKDOWN)
+
+        response = self.client.get("/machines/")
+
+        self.assertEqual(
+            sorted(m.machine_id for m in response.context["machines"]),
+            ["US-1", "US-2"],
+        )
 
     def test_dashboard_does_not_count_abandoned_sessions_as_in_flight(self):
         self.login()

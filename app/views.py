@@ -502,6 +502,15 @@ def machine_list(request):
     if active in _ACTIVE_WINDOWS:
         qs = qs.filter(last_seen__gte=timezone.now() - _ACTIVE_WINDOWS[active])
 
+    # MachinePolicy is keyed by machine_id string rather than a FK, so match on that.
+    overridden = (request.GET.get("overridden") or "").strip() == "1"
+    if overridden:
+        qs = qs.filter(
+            machine_id__in=MachinePolicy.objects.exclude(client_mode="").values_list(
+                "machine_id", flat=True
+            )
+        )
+
     sort = request.GET.get("sort") or "-last_seen"
     if sort not in MACHINE_LIST_SORTS:
         sort = "-last_seen"
@@ -536,6 +545,7 @@ def machine_list(request):
             "q": q,
             "selected_audience": audience,
             "selected_active": active,
+            "overridden_only": overridden,
             "audience_choices": Audience.choices,
             "active_choices": [("1h", "Last hour"), ("24h", "Last 24h"), ("7d", "Last 7 days"), ("30d", "Last 30 days")],
             "total_machines": paginator.count,

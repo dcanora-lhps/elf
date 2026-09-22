@@ -43,6 +43,12 @@
         {% endfor %}
       </select>
     </div>
+    <div><label>Client mode</label>
+      <label style="display:flex; gap:5px; align-items:center; color:inherit; font-size:inherit;">
+        <input type="checkbox" name="overridden" value="1" {% if overridden_only %}checked{% endif %}>
+        Override set
+      </label>
+    </div>
     <button class="btn" type="submit">Filter</button>
     <a class="btn secondary" href="{% url 'machine-list' %}">Reset</a>
   </form>
