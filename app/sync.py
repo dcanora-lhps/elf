@@ -63,6 +63,7 @@ def _track_unknown(machine_id):
 
 
 _AUDIENCE_CLIENT_MODE_FIELDS = {
+    Audience.SIXTH_GRADE: "sixth_grade_client_mode",
     Audience.MIDDLE_SCHOOL: "middle_school_client_mode",
     Audience.UPPER_SCHOOL: "upper_school_client_mode",
     Audience.TEACHER: "teacher_client_mode",

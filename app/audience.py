@@ -5,6 +5,7 @@ def audience_for(machine_id: str) -> str:
     """Classify a machine. Routing rules:
 
     - machine_id contains "EMP"          → teacher
+    - machine_id starts with "6TH-"      → 6th grade
     - machine_id starts with "MS-"       → middle school
     - machine_id starts with "US-"       → upper school
     - anything else                       → upper school (default)
@@ -12,6 +13,8 @@ def audience_for(machine_id: str) -> str:
     mid = machine_id or ""
     if "EMP" in mid:
         return Audience.TEACHER
+    if mid.startswith("6TH-"):
+        return Audience.SIXTH_GRADE
     if mid.startswith("MS-"):
         return Audience.MIDDLE_SCHOOL
     if mid.startswith("US-"):
@@ -20,16 +23,16 @@ def audience_for(machine_id: str) -> str:
 
 
 def is_recognized_machine_id(machine_id: str) -> bool:
-    """True if machine_id has an explicit EMP / MS- / US- marker. Used only for
+    """True if machine_id has an explicit EMP / 6TH- / MS- / US- marker. Used only for
     UnknownMachine tracking — unrecognized machines still get the upper-school
     ruleset by default; this just surfaces them in the admin UI for triage.
     """
     mid = machine_id or ""
-    return "EMP" in mid or mid.startswith("MS-") or mid.startswith("US-")
+    return "EMP" in mid or mid.startswith(("6TH-", "MS-", "US-"))
 
 
 class UnknownAudience(Exception):
-    """Raised when a machine can't be mapped to one of the three rulesets.
+    """Raised when a machine can't be mapped to one of the rulesets.
 
     Never returned as an empty ruleset: every sync is a clean sync, so an empty
     download tells the client to drop every rule it holds. A routing bug must

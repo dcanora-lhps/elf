@@ -72,6 +72,7 @@ def normalize_sync_type(value):
 
 class Audience(models.TextChoices):
     TEACHER = "teacher"
+    SIXTH_GRADE = "sixth_grade", "6th Grade"
     MIDDLE_SCHOOL = "middle_school"
     UPPER_SCHOOL = "upper_school"
 
@@ -153,6 +154,10 @@ class Rule(models.Model):
             "non-CEL policies."
         ),
     )
+    applies_to_sixth_grade = models.BooleanField(
+        default=False,
+        help_text='Send this rule to machines whose machine_id starts with "6TH-".',
+    )
     applies_to_middle_school = models.BooleanField(
         default=False,
         help_text='Send this rule to machines whose machine_id starts with "MS-".',
@@ -187,7 +192,8 @@ class Rule(models.Model):
             UniqueConstraint(fields=["identifier", "rule_type"], name="uniq_identifier_type"),
             CheckConstraint(
                 condition=(
-                    Q(applies_to_middle_school=True)
+                    Q(applies_to_sixth_grade=True)
+                    | Q(applies_to_middle_school=True)
                     | Q(applies_to_upper_school=True)
                     | Q(applies_to_teachers=True)
                 ),
@@ -196,6 +202,7 @@ class Rule(models.Model):
         ]
         indexes = [
             models.Index(fields=["updated_at", "id"]),
+            models.Index(fields=["applies_to_sixth_grade"]),
             models.Index(fields=["applies_to_middle_school"]),
             models.Index(fields=["applies_to_upper_school"]),
             models.Index(fields=["applies_to_teachers"]),
@@ -208,6 +215,7 @@ class Rule(models.Model):
 
 # Rule audience flag for each Audience value.
 AUDIENCE_RULE_FIELDS = {
+    Audience.SIXTH_GRADE: "applies_to_sixth_grade",
     Audience.MIDDLE_SCHOOL: "applies_to_middle_school",
     Audience.UPPER_SCHOOL: "applies_to_upper_school",
     Audience.TEACHER: "applies_to_teachers",
@@ -443,6 +451,16 @@ class ServerSettings(models.Model):
             "Fallback mode pushed to clients when neither a per-machine override nor "
             "an audience-level override applies. Per-machine overrides are set from "
             "each machine's detail page."
+        ),
+    )
+    sixth_grade_client_mode = models.CharField(
+        max_length=16,
+        choices=ClientMode.choices,
+        blank=True,
+        default=ClientMode.MONITOR,
+        help_text=(
+            "Mode for 6TH-* machines. Starts at MONITOR because the 6th grade ruleset "
+            "starts empty. Leave blank to fall back to the global default."
         ),
     )
     middle_school_client_mode = models.CharField(
