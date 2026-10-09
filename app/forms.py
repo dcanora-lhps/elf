@@ -8,6 +8,7 @@ class ServerSettingsForm(forms.ModelForm):
         model = ServerSettings
         fields = [
             "default_client_mode",
+            "sixth_grade_client_mode",
             "middle_school_client_mode",
             "upper_school_client_mode",
             "teacher_client_mode",
@@ -30,6 +31,7 @@ class ServerSettingsForm(forms.ModelForm):
         (
             "Per-audience client mode (blank = use global default)",
             (
+                "sixth_grade_client_mode",
                 "middle_school_client_mode",
                 "upper_school_client_mode",
                 "teacher_client_mode",
@@ -83,6 +85,7 @@ class RuleForm(forms.ModelForm):
             "custom_url",
             "notification_app_name",
             "cel_expr",
+            "applies_to_sixth_grade",
             "applies_to_middle_school",
             "applies_to_upper_school",
             "applies_to_teachers",
@@ -113,7 +116,12 @@ class RuleForm(forms.ModelForm):
         ("CEL expression", ("cel_expr",)),
         (
             "Audience",
-            ("applies_to_middle_school", "applies_to_upper_school", "applies_to_teachers"),
+            (
+                "applies_to_sixth_grade",
+                "applies_to_middle_school",
+                "applies_to_upper_school",
+                "applies_to_teachers",
+            ),
         ),
     )
 
@@ -125,12 +133,14 @@ class RuleForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         if not (
-            cleaned.get("applies_to_middle_school")
+            cleaned.get("applies_to_sixth_grade")
+            or cleaned.get("applies_to_middle_school")
             or cleaned.get("applies_to_upper_school")
             or cleaned.get("applies_to_teachers")
         ):
             raise forms.ValidationError(
-                "Rule must apply to at least one audience (Middle School, Upper School, or Teachers)."
+                "Rule must apply to at least one audience "
+                "(6th Grade, Middle School, Upper School, or Teachers)."
             )
         if cleaned.get("policy") == Policy.CEL and not cleaned.get("cel_expr"):
             self.add_error("cel_expr", "Required when policy is CEL.")
@@ -168,11 +178,12 @@ class EventFilterForm(forms.Form):
 
 RULE_AUDIENCE_CHOICES = [
     ("", "Any"),
+    ("sixth_grade", "6th Grade"),
     ("middle_school", "Middle School"),
     ("upper_school", "Upper School"),
     ("teachers", "Teachers"),
-    ("any_student", "Any student (MS or US)"),
-    ("all", "All three audiences"),
+    ("any_student", "Any student (6th, MS or US)"),
+    ("all", "All four audiences"),
 ]
 
 

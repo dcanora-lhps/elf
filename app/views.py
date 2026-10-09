@@ -61,9 +61,10 @@ def dashboard(request):
         .order_by("-count", "-last_seen")
     )
 
-    # Four filtered counts in a single scan instead of four round trips.
+    # Five filtered counts in a single scan instead of five round trips.
     rule_counts = Rule.objects.aggregate(
         total=Count("id"),
+        sixth_grade=Count("id", filter=Q(applies_to_sixth_grade=True)),
         middle_school=Count("id", filter=Q(applies_to_middle_school=True)),
         upper_school=Count("id", filter=Q(applies_to_upper_school=True)),
         teachers=Count("id", filter=Q(applies_to_teachers=True)),
@@ -72,6 +73,7 @@ def dashboard(request):
     ctx = {
         "rule_count": rule_counts["total"],
         "rules_teachers": rule_counts["teachers"],
+        "rules_sixth_grade": rule_counts["sixth_grade"],
         "rules_middle_school": rule_counts["middle_school"],
         "rules_upper_school": rule_counts["upper_school"],
         "blocks_24h": sum(g["count"] for g in blocked_groups),
@@ -147,7 +149,9 @@ class RuleListView(LoginRequiredMixin, ListView):
             if d.get("policy"):
                 qs = qs.filter(policy=d["policy"])
             aud = d.get("audience")
-            if aud == "middle_school":
+            if aud == "sixth_grade":
+                qs = qs.filter(applies_to_sixth_grade=True)
+            elif aud == "middle_school":
                 qs = qs.filter(applies_to_middle_school=True)
             elif aud == "upper_school":
                 qs = qs.filter(applies_to_upper_school=True)
@@ -155,10 +159,13 @@ class RuleListView(LoginRequiredMixin, ListView):
                 qs = qs.filter(applies_to_teachers=True)
             elif aud == "any_student":
                 qs = qs.filter(
-                    Q(applies_to_middle_school=True) | Q(applies_to_upper_school=True)
+                    Q(applies_to_sixth_grade=True)
+                    | Q(applies_to_middle_school=True)
+                    | Q(applies_to_upper_school=True)
                 )
             elif aud == "all":
                 qs = qs.filter(
+                    applies_to_sixth_grade=True,
                     applies_to_middle_school=True,
                     applies_to_upper_school=True,
                     applies_to_teachers=True,
@@ -357,6 +364,7 @@ def _covered_by_rule_q():
     for r in Rule.objects.all().only(
         "rule_type",
         "identifier",
+        "applies_to_sixth_grade",
         "applies_to_middle_school",
         "applies_to_upper_school",
         "applies_to_teachers",
@@ -365,6 +373,8 @@ def _covered_by_rule_q():
         if not field or not r.identifier:
             continue
         audiences = []
+        if r.applies_to_sixth_grade:
+            audiences.append(Audience.SIXTH_GRADE)
         if r.applies_to_middle_school:
             audiences.append(Audience.MIDDLE_SCHOOL)
         if r.applies_to_upper_school:
@@ -586,6 +596,7 @@ def machine_detail(request, machine_id):
     server_settings = ServerSettings.get()
     machine_audience = machine.audience if machine else audience_for(machine_id)
     audience_field = {
+        Audience.SIXTH_GRADE: "sixth_grade_client_mode",
         Audience.MIDDLE_SCHOOL: "middle_school_client_mode",
         Audience.UPPER_SCHOOL: "upper_school_client_mode",
         Audience.TEACHER: "teacher_client_mode",

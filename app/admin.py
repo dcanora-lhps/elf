@@ -30,6 +30,7 @@ class RuleAdmin(admin.ModelAdmin):
         "identifier",
         "rule_type",
         "policy",
+        "applies_to_sixth_grade",
         "applies_to_middle_school",
         "applies_to_upper_school",
         "applies_to_teachers",
@@ -38,6 +39,7 @@ class RuleAdmin(admin.ModelAdmin):
     list_filter = (
         "rule_type",
         "policy",
+        "applies_to_sixth_grade",
         "applies_to_middle_school",
         "applies_to_upper_school",
         "applies_to_teachers",

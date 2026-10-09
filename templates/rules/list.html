@@ -24,6 +24,7 @@
   <th>Identifier</th>
   <th><a class="sortable" href="?sort={% if cs == 'rule_type' %}-rule_type{% else %}rule_type{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Type{% if cs == 'rule_type' %} ▲{% elif cs == '-rule_type' %} ▼{% endif %}</a></th>
   <th><a class="sortable" href="?sort={% if cs == 'policy' %}-policy{% else %}policy{% endif %}{% if filters_querystring %}&{{ filters_querystring }}{% endif %}">Policy{% if cs == 'policy' %} ▲{% elif cs == '-policy' %} ▼{% endif %}</a></th>
+  <th>6th</th>
   <th>MS</th>
   <th>US</th>
   <th>Teachers</th>
@@ -45,6 +46,7 @@
   </td>
   <td>{{ rule.rule_type }}</td>
   <td>{% if rule.policy|slice:":5" == "BLOCK" or rule.policy == "SILENT_BLOCKLIST" %}<span class="pill block">{{ rule.policy }}</span>{% elif rule.policy|slice:":5" == "ALLOW" %}<span class="pill allow">{{ rule.policy }}</span>{% else %}<span class="pill">{{ rule.policy }}</span>{% endif %}</td>
+  <td>{% if rule.applies_to_sixth_grade %}<span class="pill sixth_grade">yes</span>{% else %}—{% endif %}</td>
   <td>{% if rule.applies_to_middle_school %}<span class="pill middle_school">yes</span>{% else %}—{% endif %}</td>
   <td>{% if rule.applies_to_upper_school %}<span class="pill upper_school">yes</span>{% else %}—{% endif %}</td>
   <td>{% if rule.applies_to_teachers %}<span class="pill teacher">yes</span>{% else %}—{% endif %}</td>

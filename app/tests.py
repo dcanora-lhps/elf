@@ -28,6 +28,7 @@ from .models import (
     ServerSettings,
     SyncCursor,
     SyncSession,
+    UnknownMachine,
     SyncType,
 )
 
@@ -53,6 +54,7 @@ class SyncTestCase(TestCase):
 
     def make_rule(self, identifier, **flags):
         scope = {
+            "applies_to_sixth_grade": False,
             "applies_to_middle_school": False,
             "applies_to_upper_school": False,
             "applies_to_teachers": False,
@@ -532,6 +534,52 @@ class PreflightTests(SyncTestCase):
             "/preflight/US-1", data="{}", content_type="application/json"
         )
         self.assertEqual(response.status_code, 401)
+
+
+class SixthGradeTests(SyncTestCase):
+    def test_6th_machine_ids_route_to_sixth_grade(self):
+        self.json("preflight", "6TH-1")
+        self.assertEqual(SyncSession.objects.get().audience, Audience.SIXTH_GRADE)
+        self.assertFalse(UnknownMachine.objects.exists())
+
+    def test_6th_gets_only_rules_scoped_to_6th(self):
+        self.make_rule("ms", applies_to_middle_school=True)
+        self.make_rule("us", applies_to_upper_school=True)
+        self.make_rule("emp", applies_to_teachers=True)
+        self.make_rule("sixth", applies_to_sixth_grade=True)
+
+        self.json("preflight", "6TH-1")
+        rules, _ = self.download_all("6TH-1")
+        self.assertEqual([r["identifier"] for r in rules], ["sixth"])
+
+        self.json("preflight", "MS-1")
+        rules, _ = self.download_all("MS-1")
+        self.assertEqual([r["identifier"] for r in rules], ["ms"])
+
+    def test_6th_client_mode_starts_at_monitor_even_under_a_lockdown_default(self):
+        settings_obj = ServerSettings.get()
+        settings_obj.default_client_mode = ClientMode.LOCKDOWN
+        settings_obj.save()
+
+        self.assertEqual(self.json("preflight", "6TH-1")["client_mode"], ClientMode.MONITOR)
+        self.assertEqual(self.json("preflight", "MS-1")["client_mode"], ClientMode.LOCKDOWN)
+
+    def test_blank_6th_client_mode_falls_back_to_the_default(self):
+        settings_obj = ServerSettings.get()
+        settings_obj.default_client_mode = ClientMode.LOCKDOWN
+        settings_obj.sixth_grade_client_mode = ""
+        settings_obj.save()
+
+        self.assertEqual(self.json("preflight", "6TH-1")["client_mode"], ClientMode.LOCKDOWN)
+
+    def test_any_student_rule_filter_includes_6th(self):
+        self.login()
+        self.make_rule("sixth", applies_to_sixth_grade=True)
+        self.make_rule("emp", applies_to_teachers=True)
+
+        response = self.client.get("/rules/", {"audience": "any_student"})
+        identifiers = [r.identifier for r in response.context["rules"]]
+        self.assertEqual(identifiers, ["sixth"])
 
 
 class MachineViewTests(SyncTestCase):
